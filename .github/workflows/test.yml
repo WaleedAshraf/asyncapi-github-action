@@ -7,19 +7,13 @@ on:
       - 'releases/*'
 
 jobs:
-  # unit tests
-  units:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v1
-    - run: npm ci
-    - run: npm test
-
-  # test action works running from the graph  
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
-    - uses: ./
-      with:
-        milliseconds: 1000
+      - uses: actions/checkout@v2
+      - name: Setup node
+        uses: actions/setup-node@v1
+        with:
+          node-version: "12.x"
+      - run: npm install
+      - run: npm test

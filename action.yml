@@ -1,13 +1,14 @@
-name: 'Wait'
-description: 'Wait a designated number of milliseconds'
+name: 'asyncapi-github-action'
+author: 'Waleed Ashraf'
+description: 'Github Action for AsyncAPI schema validation'
 inputs:
-  milliseconds:  # id of input
-    description: 'number of milliseconds to wait'
+  sc:
+    filepath: 'Path of asyncapi schema file'
     required: true
-    default: '1000'
-outputs:
-  time: # output will be available to future steps 
-    description: 'The message to output'
+    default: './asyncapi.yaml'
 runs:
   using: 'node12'
   main: 'dist/index.js'
+branding:
+  icon: 'file-text'
+  color: 'blue'
