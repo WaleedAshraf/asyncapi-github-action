@@ -7,8 +7,11 @@ const validate = async (filePath) => {
     throw new Error('path is not string')
 
   const dir = process.env.GITHUB_WORKSPACE || __dirname
-  const data = fs.readFileSync(path.resolve(dir, filePath), 'utf8');
+  const fullPath = path.resolve(dir, filePath)
+  console.log(`schema file full path:${fullPath}`)
+  const data = fs.readFileSync(fullPath, 'utf8');
   await parser.parse(data)
+  console.log('schema is valid')
 }
 
 module.exports = validate;

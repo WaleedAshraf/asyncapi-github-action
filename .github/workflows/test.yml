@@ -17,3 +17,11 @@ jobs:
           node-version: "12.x"
       - run: npm install
       - run: npm test
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: asyncapi-github-action
+        uses: ./
+        with:
+          filepath: './test/mock-schema.yaml'
