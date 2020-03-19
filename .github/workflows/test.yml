@@ -25,4 +25,4 @@ jobs:
       - name: asyncapi-github-action
         uses: ./
         with:
-          filepath: './test/mock-schema.yaml'
+          filepath: './test/mock-invalid-schema.yaml'
