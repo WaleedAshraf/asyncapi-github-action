@@ -638,8 +638,11 @@ const validate = async (filePath) => {
     throw new Error('path is not string')
 
   const dir = process.env.GITHUB_WORKSPACE || __dirname
-  const data = fs.readFileSync(path.resolve(dir, filePath), 'utf8');
+  const fullPath = path.resolve(dir, filePath)
+  console.log(`schema file full path:${fullPath}`)
+  const data = fs.readFileSync(fullPath, 'utf8');
   await parser.parse(data)
+  console.log('schema is valid')
 }
 
 module.exports = validate;
@@ -1788,14 +1791,13 @@ const core = __webpack_require__(470);
 const validate = __webpack_require__(30);
 
 async function run() {
-  try { 
-    console.log('hello')
+  try {
     const filepath = core.getInput('filepath');
 
     core.debug((new Date()).toTimeString())
     await validate(filepath)
     core.debug((new Date()).toTimeString())
-  } 
+  }
   catch (error) {
     core.setFailed(error.message);
   }
@@ -10000,7 +10002,6 @@ function getInput(name, options) {
     if (options && options.required && !val) {
         throw new Error(`Input required and not supplied: ${name}`);
     }
-    console.log('val', val)
     return val.trim();
 }
 exports.getInput = getInput;
@@ -10133,7 +10134,6 @@ function getState(name) {
 }
 exports.getState = getState;
 //# sourceMappingURL=core.js.map
-
 
 /***/ }),
 

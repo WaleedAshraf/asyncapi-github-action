@@ -5,7 +5,7 @@ inputs:
   sc:
     filepath: 'Path of asyncapi schema file'
     required: true
-    default: './asyncapi.yaml'
+    default: 'asyncapi.yaml'
 runs:
   using: 'node12'
   main: 'dist/index.js'
