@@ -90,45 +90,6 @@ module.exports.addConstructor = deprecated('addConstructor');
 
 /***/ }),
 
-/***/ 11:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const Operation = __webpack_require__(794);
-
-/**
- * Implements functions to deal with a PublishOperation object.
- * @class
- * @extends Operation
- * @returns {PublishOperation}
- */
-class PublishOperation extends Operation {
-  /**
-   * @returns {boolean}
-   */
-  isPublish() {
-    return true;
-  }
-  
-  /**
-   * @returns {boolean}
-   */
-  isSubscribe() {
-    return false;
-  }
-
-  /**
-   * @returns {string}
-   */
-  kind() {
-    return 'publish';
-  }
-}
-
-module.exports = PublishOperation;
-
-
-/***/ }),
-
 /***/ 16:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
@@ -629,7 +590,7 @@ module.exports = function generate_comment(it, $keyword, $ruleType) {
 /***/ 30:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
-const parser = __webpack_require__(357);
+const parser = __webpack_require__(474);
 const fs = __webpack_require__(826);
 const path = __webpack_require__(622);
 
@@ -650,10 +611,10 @@ module.exports = validate;
 
 /***/ }),
 
-/***/ 38:
+/***/ 31:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
-const ParserError = __webpack_require__(150);
+const ParserError = __webpack_require__(59);
 
 /**
  * Implements common functionality for all the models.
@@ -677,39 +638,6 @@ class Base {
 }
 
 module.exports = Base;
-
-
-/***/ }),
-
-/***/ 39:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-
-/**
- * Implements functions to deal with a CorrelationId object.
- * @class
- * @extends Base
- * @returns {CorrelationId}
- */
-class CorrelationId extends Base {
-  /**
-   * @returns {string}
-   */
-  description() {
-    return this._json.description;
-  }
-
-  /**
-   * @returns {string}
-   */
-  location() {
-    return this._json.location;
-  }
-}
-
-module.exports = addExtensions(CorrelationId);
 
 
 /***/ }),
@@ -1161,6 +1089,39 @@ function validateKeyword(definition, throwError) {
   else
     return false;
 }
+
+
+/***/ }),
+
+/***/ 59:
+/***/ (function(module) {
+
+class ParserError extends Error {
+  constructor(e, json, errors) {
+    super(e);
+
+    let msg;
+
+    if (typeof e === 'string') {
+      msg = e;
+    }
+    if (typeof e.message === 'string') {
+      msg = e.message;
+    }
+
+    if (json) {
+      this.parsedJSON = json;
+    }
+
+    if (errors) {
+      this.errors = errors;
+    }
+
+    this.message = msg;
+  }
+}
+
+module.exports = ParserError;
 
 
 /***/ }),
@@ -1700,53 +1661,6 @@ module.exports = Mark;
 
 /***/ }),
 
-/***/ 98:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-
-/**
- * Implements functions to deal with a OAuthFlow object.
- * @class
- * @extends Base
- * @returns {OAuthFlow}
- */
-class OAuthFlow extends Base {
-  /**
-   * @returns {string}
-   */
-  authorizationUrl() {
-    return this._json.authorizationUrl;
-  }
-
-  /**
-   * @returns {string}
-   */
-  tokenUrl() {
-    return this._json.tokenUrl;
-  }
-
-  /**
-   * @returns {string}
-   */
-  refreshUrl() {
-    return this._json.refreshUrl;
-  }
-
-  /**
-   * @returns {Object<string, string>}
-   */
-  scopes() {
-    return this._json.scopes;
-  }
-}
-
-module.exports = addExtensions(OAuthFlow);
-
-
-/***/ }),
-
 /***/ 100:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
@@ -1859,6 +1773,86 @@ module.exports = function generate_allOf(it, $keyword, $ruleType) {
 
 /***/ }),
 
+/***/ 112:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+const Tag = __webpack_require__(620);
+const ExternalDocs = __webpack_require__(625);
+
+/**
+ * Implements functions to deal with the common properties Operation and OperationTrait object have.
+ * @class
+ * @extends Base
+ * @returns {OperationTraitable}
+ */
+class OperationTraitable extends Base {
+  /**
+   * @returns {string}
+   */
+  id() {
+    return this._json.operationId;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  summary() {
+    return this._json.summary;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  description() {
+    return this._json.description;
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasTags() {
+    return !!(this._json.tags && this._json.tags.length);
+  }
+  
+  /**
+   * @returns {Tag[]}
+   */
+  tags() {
+    if (!this._json.tags) return [];
+    return this._json.tags.map(t => new Tag(t));
+  }
+
+  /**
+   * @returns {ExternalDocs}
+   */
+  externalDocs() {
+    if (!this._json.externalDocs) return null;
+    return new ExternalDocs(this._json.externalDocs);
+  }
+
+  /**
+   * @returns {Object}
+   */
+  bindings() {
+    return this._json.bindings || null;
+  }
+
+  /**
+   * @param {string} name - Name of the binding.
+   * @returns {Object}
+   */
+  binding(name) {
+    return this._json.bindings ? this._json.bindings[name] : null;
+  }
+}
+
+module.exports = addExtensions(OperationTraitable);
+
+
+/***/ }),
+
 /***/ 114:
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -1938,39 +1932,6 @@ module.exports = {
     }
   }
 };
-
-
-/***/ }),
-
-/***/ 150:
-/***/ (function(module) {
-
-class ParserError extends Error {
-  constructor(e, json, errors) {
-    super(e);
-
-    let msg;
-
-    if (typeof e === 'string') {
-      msg = e;
-    }
-    if (typeof e.message === 'string') {
-      msg = e.message;
-    }
-
-    if (json) {
-      this.parsedJSON = json;
-    }
-
-    if (errors) {
-      this.errors = errors;
-    }
-
-    this.message = msg;
-  }
-}
-
-module.exports = ParserError;
 
 
 /***/ }),
@@ -2065,20 +2026,19 @@ module.exports = function generate_contains(it, $keyword, $ruleType) {
 
 /***/ }),
 
-/***/ 165:
+/***/ 177:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
-const { addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-const ExternalDocs = __webpack_require__(317);
+const { addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
 
 /**
- * Implements functions to deal with a Tag object.
+ * Implements functions to deal with the Contact object.
  * @class
  * @extends Base
- * @returns {Tag}
+ * @returns {Contact}
  */
-class Tag extends Base {
+class Contact extends Base {
   /**
    * @returns {string}
    */
@@ -2089,389 +2049,19 @@ class Tag extends Base {
   /**
    * @returns {string}
    */
-  description() {
-    return this._json.description;
+  url() {
+    return this._json.url;
   }
   
   /**
-   * @returns {ExternalDocs}
+   * @returns {string}
    */
-  externalDocs() {
-    if (!this._json.externalDocs) return null;
-    return new ExternalDocs(this._json.externalDocs);
+  email() {
+    return this._json.email;
   }
 }
 
-module.exports = addExtensions(Tag);
-
-
-/***/ }),
-
-/***/ 178:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-
-/**
- * Implements functions to deal with a Schema object.
- * @class
- * @extends Base
- * @returns {Schema}
- */
-class Schema extends Base {
-  /**
-   * @returns {string}
-   */
-  uid() {
-    return this.$id() || this.ext('x-parser-schema-id');
-  }
-  
-  /**
-   * @returns {string}
-   */
-  $id() {
-    return this._json.$id;
-  }
-  
-  /**
-   * @returns {number}
-   */
-  multipleOf() {
-    return this._json.multipleOf;
-  }
-  
-  /**
-   * @returns {number}
-   */
-  maximum() {
-    return this._json.maximum;
-  }
-  
-  /**
-   * @returns {number}
-   */
-  exclusiveMaximum() {
-    return this._json.exclusiveMaximum;
-  }
-  
-  /**
-   * @returns {number}
-   */
-  minimum() {
-    return this._json.minimum;
-  }
-  
-  /**
-   * @returns {number}
-   */
-  exclusiveMinimum() {
-    return this._json.exclusiveMinimum;
-  }
-  
-  /**
-   * @returns {number}
-   */
-  maxLength() {
-    return this._json.maxLength;
-  }
-  
-  /**
-   * @returns {number}
-   */
-  minLength() {
-    return this._json.minLength;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  pattern() {
-    return this._json.pattern;
-  }
-  
-  /**
-   * @returns {number}
-   */
-  maxItems() {
-    return this._json.maxItems;
-  }
-  
-  /**
-   * @returns {number}
-   */
-  minItems() {
-    return this._json.minItems;
-  }
-  
-  /**
-   * @returns {boolean}
-   */
-  uniqueItems() {
-    return !!this._json.uniqueItems;
-  }
-  
-  /**
-   * @returns {number}
-   */
-  maxProperties() {
-    return this._json.maxProperties;
-  }
-  
-  /**
-   * @returns {number}
-   */
-  minProperties() {
-    return this._json.minProperties;
-  }
-  
-  /**
-   * @returns {string[]}
-   */
-  required() {
-    return this._json.required;
-  }
-  
-  /**
-   * @returns {any[]}
-   */
-  enum() {
-    return this._json.enum;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  type() {
-    return this._json.type;
-  }
-  
-  /**
-   * @returns {Schema[]}
-   */
-  allOf() {
-    if (!this._json.allOf) return null;
-    return this._json.allOf.map(s => new Schema(s));
-  }
-  
-  /**
-   * @returns {Schema[]}
-   */
-  oneOf() {
-    if (!this._json.oneOf) return null;
-    return this._json.oneOf.map(s => new Schema(s));
-  }
-  
-  /**
-   * @returns {Schema[]}
-   */
-  anyOf() {
-    if (!this._json.anyOf) return null;
-    return this._json.anyOf.map(s => new Schema(s));
-  }
-  
-  /**
-   * @returns {Schema}
-   */
-  not() {
-    if (!this._json.not) return null;
-    return new Schema(this._json.not);
-  }
-  
-  /**
-   * @returns {Schema|Schema[]}
-   */
-  items() {
-    if (!this._json.items) return null;
-    if (Array.isArray(this._json.items)) {
-      return this._json.items.map(s => new Schema(s));
-    }
-    return new Schema(this._json.items);
-  }
-  
-  /**
-   * @returns {Object<string, Schema>}
-   */
-  properties() {
-    if (!this._json.properties) return null;
-    const result = {};
-    Object.keys(this._json.properties).forEach(k => {
-      result[k] = new Schema(this._json.properties[k]);
-    });
-    return result;
-  }
-  
-  /**
-   * @returns {boolean|Schema}
-   */
-  additionalProperties() {
-    const ap = this._json.additionalProperties;
-    if (ap === undefined || ap === null) return;
-    if (typeof ap === 'boolean') return ap;
-    return new Schema(ap);
-  }
-  
-  /**
-   * @returns {Schema}
-   */
-  additionalItems() {
-    const ai = this._json.additionalItems;
-    if (ai === undefined || ai === null) return;
-    return new Schema(ai);
-  }
-  
-  /**
-   * @returns {Object<string, Schema>}
-   */
-  patternProperties() {
-    if (!this._json.patternProperties) return null;
-    const result = {};
-    Object.keys(this._json.patternProperties).map(k => {
-      result[k] = new Schema(this._json.patternProperties[k]);
-    });
-    return result;
-  }
-
-  /**
-   * @returns {any}
-   */
-  const() {
-    return this._json.const;
-  }
-
-  /**
-   * @returns {Schema}
-   */
-  contains() {
-    if (!this._json.contains) return null;
-    return new Schema(this._json.contains);
-  }
-
-  /**
-   * @returns {Object<string, Schema|string[]>}
-   */
-  dependencies() {
-    if (!this._json.dependencies) return null;
-    const result = {};
-    Object.keys(this._json.dependencies).forEach(k => {
-      if (!Array.isArray(this._json.dependencies[k])) {
-        result[k] = new Schema(this._json.dependencies[k]);
-      } else {
-        result[k] = this._json.dependencies[k];
-      }
-    });
-    return result;
-  }
-
-  /**
-   * @returns {Schema}
-   */
-  propertyNames() {
-    if (!this._json.propertyNames) return null;
-    return new Schema(this._json.propertyNames);
-  }
-
-  /**
-   * @returns {Schema}
-   */
-  if() {
-    if (!this._json.if) return null;
-    return new Schema(this._json.if);
-  }
-
-  /**
-   * @returns {Schema}
-   */
-  then() {
-    if (!this._json.then) return null;
-    return new Schema(this._json.then);
-  }
-
-  /**
-   * @returns {Schema}
-   */
-  else() {
-    if (!this._json.else) return null;
-    return new Schema(this._json.else);
-  }
-
-  /**
-   * @returns {string}
-   */
-  format() {
-    return this._json.format;
-  }
-
-  /**
-   * @returns {string}
-   */
-  contentEncoding() {
-    return this._json.contentEncoding;
-  }
-
-  /**
-   * @returns {string}
-   */
-  contentMediaType() {
-    return this._json.contentMediaType;
-  }
-
-  /**
-   * @returns {Object<string, Schema>}
-   */
-  definitions() {
-    if (!this._json.definitions) return null;
-    const result = {};
-    Object.keys(this._json.definitions).map(k => {
-      result[k] = new Schema(this._json.definitions[k]);
-    });
-    return result;
-  }
-
-  /**
-   * @returns {string}
-   */
-  description() {
-    return this._json.description;
-  }
-
-  /**
-   * @returns {string}
-   */
-  title() {
-    return this._json.title;
-  }
-
-  /**
-   * @returns {any}
-   */
-  default() {
-    return this._json.default;
-  }
-
-  /**
-   * @returns {boolean}
-   */
-  readOnly() {
-    return !!this._json.readOnly;
-  }
-
-  /**
-   * @returns {boolean}
-   */
-  writeOnly() {
-    return !!this._json.writeOnly;
-  }
-
-  /**
-   * @returns {any[]}
-   */
-  examples() {
-    return this._json.examples;
-  }
-}
-
-module.exports = addExtensions(Schema);
+module.exports = addExtensions(Contact);
 
 
 /***/ }),
@@ -2512,6 +2102,45 @@ function Ono(ErrorConstructor, options) {
     return ono;
 }
 //# sourceMappingURL=constructor.js.map
+
+/***/ }),
+
+/***/ 185:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const Operation = __webpack_require__(573);
+
+/**
+ * Implements functions to deal with a PublishOperation object.
+ * @class
+ * @extends Operation
+ * @returns {PublishOperation}
+ */
+class PublishOperation extends Operation {
+  /**
+   * @returns {boolean}
+   */
+  isPublish() {
+    return true;
+  }
+  
+  /**
+   * @returns {boolean}
+   */
+  isSubscribe() {
+    return false;
+  }
+
+  /**
+   * @returns {string}
+   */
+  kind() {
+    return 'publish';
+  }
+}
+
+module.exports = PublishOperation;
+
 
 /***/ }),
 
@@ -2600,6 +2229,54 @@ function mergeErrors(newError, originalError) {
 /***/ (function(module) {
 
 module.exports = require("https");
+
+/***/ }),
+
+/***/ 212:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const MessageTraitable = __webpack_require__(604);
+const Schema = __webpack_require__(671);
+
+/**
+ * Implements functions to deal with a Message object.
+ * @class
+ * @extends MessageTraitable
+ * @returns {Message}
+ */
+class Message extends MessageTraitable {
+  /**
+   * @returns {string}
+   */
+  uid() {
+    return this.name() || this.ext('x-parser-message-name') || Buffer.from(JSON.stringify(this._json)).toString('base64');
+  }
+
+  /**
+   * @returns {Schema}
+   */
+  payload() {
+    if (!this._json.payload) return null;
+    return new Schema(this._json.payload);
+  }
+
+  /**
+   * @returns {any}
+   */
+  originalPayload() {
+    return this._json['x-parser-original-payload'] || this.payload();
+  }
+
+  /**
+   * @returns {string}
+   */
+  originalSchemaFormat() {
+    return this._json['x-parser-original-schema-format'] || this.schemaFormat();
+  }
+}
+
+module.exports = Message;
+
 
 /***/ }),
 
@@ -2765,6 +2442,100 @@ function getResult (obj, prop, file, callback, $refs) {
 
 /***/ }),
 
+/***/ 218:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { createMapOfType, getMapKeyOfType, addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+const ServerVariable = __webpack_require__(567);
+const ServerSecurityRequirement = __webpack_require__(585);
+
+/**
+ * Implements functions to deal with a Server object.
+ * @class
+ * @extends Base
+ * @returns {Server}
+ */
+class Server extends Base {
+  /**
+   * @returns {string}
+   */
+  description() {
+    return this._json.description;
+  }
+
+  /**
+   * @returns {string}
+   */
+  url() {
+    return this._json.url;
+  }
+
+  /**
+   * @returns {string}
+   */
+  protocol() {
+    return this._json.protocol;
+  }
+
+  /**
+   * @returns {string}
+   */
+  protocolVersion() {
+    return this._json.protocolVersion;
+  }
+
+  /**
+   * @returns {Object<string, ServerVariable>}
+   */
+  variables() {
+    return createMapOfType(this._json.variables, ServerVariable);
+  }
+
+  /**
+   * @param {string} name - Name of the server variable.
+   * @returns {ServerVariable}
+   */
+  variable(name) {
+    return getMapKeyOfType(this._json.variables, name, ServerVariable);
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasVariables() {
+    return !!this._json.variables;
+  }
+
+  /**
+   * @returns {ServerSecurityRequirement[]}
+   */
+  security() {
+    if (!this._json.security) return null;
+    return this._json.security.map(sec => new ServerSecurityRequirement(sec));
+  }
+
+  /**
+   * @returns {Object}
+   */
+  bindings() {
+    return this._json.bindings || null;
+  }
+
+  /**
+   * @param {string} name - Name of the binding.
+   * @returns {Object}
+   */
+  binding(name) {
+    return this._json.bindings ? this._json.bindings[name] : null;
+  }
+}
+
+module.exports = addExtensions(Server);
+
+
+/***/ }),
+
 /***/ 228:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
@@ -2804,6 +2575,45 @@ module.exports = new Type('tag:yaml.org,2002:bool', {
   },
   defaultStyle: 'lowercase'
 });
+
+
+/***/ }),
+
+/***/ 229:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const Operation = __webpack_require__(573);
+
+/**
+ * Implements functions to deal with a SubscribeOperation object.
+ * @class
+ * @extends Operation
+ * @returns {SubscribeOperation}
+ */
+class SubscribeOperation extends Operation {
+  /**
+   * @returns {boolean}
+   */
+  isPublish() {
+    return false;
+  }
+  
+  /**
+   * @returns {boolean}
+   */
+  isSubscribe() {
+    return true;
+  }
+
+  /**
+   * @returns {string}
+   */
+  kind() {
+    return 'subscribe';
+  }
+}
+
+module.exports = SubscribeOperation;
 
 
 /***/ }),
@@ -2984,45 +2794,6 @@ module.exports = function generate_dependencies(it, $keyword, $ruleType) {
 
 /***/ }),
 
-/***/ 237:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const Operation = __webpack_require__(794);
-
-/**
- * Implements functions to deal with a SubscribeOperation object.
- * @class
- * @extends Operation
- * @returns {SubscribeOperation}
- */
-class SubscribeOperation extends Operation {
-  /**
-   * @returns {boolean}
-   */
-  isPublish() {
-    return false;
-  }
-  
-  /**
-   * @returns {boolean}
-   */
-  isSubscribe() {
-    return true;
-  }
-
-  /**
-   * @returns {string}
-   */
-  kind() {
-    return 'subscribe';
-  }
-}
-
-module.exports = SubscribeOperation;
-
-
-/***/ }),
-
 /***/ 238:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
@@ -3080,6 +2851,26 @@ function normalizeArgs (args) {
     callback
   };
 }
+
+
+/***/ }),
+
+/***/ 241:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { addExtensions } = __webpack_require__(696);
+const MessageTraitable = __webpack_require__(604);
+
+/**
+ * Implements functions to deal with a MessageTrait object.
+ * @class
+ * @extends Base
+ * @returns {MessageTrait}
+ */
+class MessageTrait extends MessageTraitable {
+}
+
+module.exports = addExtensions(MessageTrait);
 
 
 /***/ }),
@@ -3857,320 +3648,126 @@ $Ref.dereference = function ($ref, resolvedValue) {
 
 /***/ }),
 
-/***/ 294:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const ParserError = __webpack_require__(150);
-
-class ParserErrorNoJS extends ParserError {
-}
-
-module.exports = ParserErrorNoJS;
-
-
-/***/ }),
-
 /***/ 305:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
-const { createMapOfType, getMapKeyOfType, addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-const Info = __webpack_require__(420);
-const Server = __webpack_require__(727);
-const Channel = __webpack_require__(362);
-const Components = __webpack_require__(630);
-const Message = __webpack_require__(766);
-const Tag = __webpack_require__(165);
+const { getMapKeyOfType, createMapOfType, addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+const Message = __webpack_require__(212);
+const Schema = __webpack_require__(671);
+const SecurityScheme = __webpack_require__(759);
+const ChannelParameter = __webpack_require__(749);
+const CorrelationId = __webpack_require__(889);
+const OperationTrait = __webpack_require__(788);
+const MessageTrait = __webpack_require__(241);
 
 /**
- * Implements functions to deal with the AsyncAPI document.
+ * Implements functions to deal with a Components object.
  * @class
  * @extends Base
- * @returns {AsyncAPIDocument}
+ * @returns {Components}
  */
-class AsyncAPIDocument extends Base {
-  constructor(...args) {
-    super(...args);
-
-    assignNameToAnonymousMessages(this);
-    assignIdToAnonymousSchemas(this);
-
-    assignNameToComponentMessages(this);
-    assignUidToComponentSchemas(this);
+class Components extends Base {
+  /**
+   * @returns {Object<string, Message>}
+   */
+  messages() {
+    return createMapOfType(this._json.messages, Message);
   }
 
   /**
-   * @returns {string}
+   * @returns {Message}
    */
-  version() {
-    return this._json.asyncapi;
-  }
-
-  /**
-   * @returns {Info}
-   */
-  info() {
-    return new Info(this._json.info);
+  message(name) {
+    return getMapKeyOfType(this._json.messages, name, Message);
   }
   
   /**
-   * @returns {string}
+   * @returns {Object<string, Schema>}
    */
-  id() {
-    return this._json.id;
+  schemas() {
+    return createMapOfType(this._json.schemas, Schema);
   }
 
   /**
-   * @returns {boolean}
+   * @returns {Schema}
    */
-  hasServers() {
-    return !!this._json.servers;
+  schema(name) {
+    return getMapKeyOfType(this._json.schemas, name, Schema);
   }
   
   /**
-   * @returns {Object<string, Server>}
+   * @returns {Object<string, SecurityScheme>}
    */
-  servers() {
-    return createMapOfType(this._json.servers, Server);
-  }
-
-  /**
-   * @param {string} name - Name of the server.
-   * @returns {Server}
-   */
-  server(name) {
-    return getMapKeyOfType(this._json.servers, name, Server);
-  }
-
-  /**
-   * @returns {boolean}
-   */
-  hasChannels() {
-    return !!this._json.channels;
+  securitySchemes() {
+    return createMapOfType(this._json.securitySchemes, SecurityScheme);
   }
   
   /**
-   * @returns {Object<string, Channel>}
+   * @returns {SecurityScheme}
    */
-  channels() {
-    return createMapOfType(this._json.channels, Channel, this);
+  securityScheme(name) {
+    return getMapKeyOfType(this._json.securitySchemes, name, SecurityScheme);
   }
   
   /**
-   * @returns {string[]}
+   * @returns {Object<string, ChannelParameter>}
    */
-  channelNames() {
-    if (!this._json.channels) return [];
-    return Object.keys(this._json.channels);
+  parameters() {
+    return createMapOfType(this._json.parameters, ChannelParameter);
   }
 
   /**
-   * @param {string} name - Name of the channel.
-   * @returns {Channel}
+   * @returns {ChannelParameter}
    */
-  channel(name) {
-    return getMapKeyOfType(this._json.channels, name, Channel, this);
+  parameter(name) {
+    return getMapKeyOfType(this._json.parameters, name, ChannelParameter);
+  }
+  
+  /**
+   * @returns {Object<string, CorrelationId>}
+   */
+  correlationIds() {
+    return createMapOfType(this._json.correlationIds, CorrelationId);
   }
 
   /**
-   * @returns {string}
+   * @returns {CorrelationId}
    */
-  defaultContentType() {
-    return this._json.defaultContentType || null;
+  correlationId(name) {
+    return getMapKeyOfType(this._json.correlationIds, name, CorrelationId);
+  }
+  
+  /**
+   * @returns {Object<string, OperationTrait>}
+   */
+  operationTraits() {
+    return createMapOfType(this._json.operationTraits, OperationTrait);
   }
 
   /**
-   * @returns {boolean}
+   * @returns {OperationTrait}
    */
-  hasComponents() {
-    return !!this._json.components;
+  operationTrait(name) {
+    return getMapKeyOfType(this._json.operationTraits, name, OperationTrait);
+  }
+  
+  /**
+   * @returns {Object<string, MessageTrait>}
+   */
+  messageTraits() {
+    return createMapOfType(this._json.messageTraits, MessageTrait);
   }
 
   /**
-   * @returns {Components}
+   * @returns {MessageTrait}
    */
-  components() {
-    if (!this._json.components) return null;
-    return new Components(this._json.components);
-  }
-
-  /**
-   * @returns {boolean}
-   */
-  hasTags() {
-    return !!(this._json.tags && this._json.tags.length);
-  }
-
-  /**
-   * @returns {Tag[]}
-   */
-  tags() {
-    if (!this._json.tags) return [];
-    return this._json.tags.map(t => new Tag(t));
-  }
-
-  /**
-   * @returns {Map<Message>}
-   */
-  allMessages() {
-    const messages = new Map();
-    
-    if (this.hasChannels()) {
-      this.channelNames().forEach(channelName => {
-        const channel = this.channel(channelName);
-        if (channel.hasPublish()) {
-          channel.publish().messages().forEach(m => {
-            messages.set(m.uid(), m);
-          });
-        }
-        if (channel.hasSubscribe()) {
-          channel.subscribe().messages().forEach(m => {
-            messages.set(m.uid(), m);
-          });
-        }
-      });
-    }
-    
-    if (this.hasComponents()) {
-      Object.values(this.components().messages()).forEach(m => {
-          messages.set(m.uid(), m);
-      });
-    }
-    
-    return messages;
-  }
-
-  /**
-   * @returns {Map<Schema>}
-   */
-  allSchemas() {
-    const schemas = new Map();
-    
-    if (this.hasChannels()) {
-      this.channelNames().forEach(channelName => {
-        const channel = this.channel(channelName);
-
-        Object.values(channel.parameters()).forEach(p => {
-          if (p.schema()) {
-            schemas.set(p.schema().uid(), p.schema());
-          }
-        });
-
-        if (channel.hasPublish()) {
-          channel.publish().messages().forEach(m => {
-            if (m.headers()) {
-              schemas.set(m.headers().uid(), m.headers());
-            }
-
-            if (m.payload()) {
-              schemas.set(m.payload().uid(), m.payload());
-            }
-          });
-        }
-        if (channel.hasSubscribe()) {
-          channel.subscribe().messages().forEach(m => {
-            if (m.headers()) {
-              schemas.set(m.headers().uid(), m.headers());
-            }
-
-            if (m.payload()) {
-              schemas.set(m.payload().uid(), m.payload());
-            }
-          });
-        }
-      });
-    }
-
-    if (this.hasComponents()) {
-      Object.values(this.components().schemas()).forEach(s => {
-          schemas.set(s.uid(), s);
-      });
-    }
-    
-    return schemas;
+  messageTrait(name) {
+    return getMapKeyOfType(this._json.messageTraits, name, MessageTrait);
   }
 }
 
-function assignNameToComponentMessages(doc){
-  if (doc.hasComponents()) {
-    for(const [key, m] of Object.entries(doc.components().messages())){
-      if (m.name() === undefined) {
-        m.json()['x-parser-message-name'] = key;
-      }
-    }
-  }
-}
-function assignUidToComponentSchemas(doc){
-  if (doc.hasComponents()) {
-    for(const [key, s] of Object.entries(doc.components().schemas())){
-      s.json()['x-parser-schema-id'] = key;
-    }
-  }
-}
-function assignNameToAnonymousMessages(doc) {
-  let anonymousMessageCounter = 0;
-
-  if (doc.hasChannels()) {
-    doc.channelNames().forEach(channelName => {
-      const channel = doc.channel(channelName);
-      if (channel.hasPublish()) {
-        channel.publish().messages().forEach(m => {
-          if (m.name() === undefined) {
-            m.json()['x-parser-message-name'] = `<anonymous-message-${++anonymousMessageCounter}>`;
-          }
-        });
-      }
-      if (channel.hasSubscribe()) {
-        channel.subscribe().messages().forEach(m => {
-          if (m.name() === undefined) {
-            m.json()['x-parser-message-name'] = `<anonymous-message-${++anonymousMessageCounter}>`;
-          }
-        });
-      }
-    });
-  }
-}
-
-function assignIdToAnonymousSchemas(doc) {
-  let anonymousSchemaCounter = 0;
-
-  if (doc.hasChannels()) {
-    doc.channelNames().forEach(channelName => {
-      const channel = doc.channel(channelName);
-
-      Object.values(channel.parameters()).forEach(p => {
-        if (p.schema() && !p.schema().$id()) {
-          p.schema().json()['x-parser-schema-id'] = `<anonymous-schema-${++anonymousSchemaCounter}>`;
-        }
-      });
-
-      if (channel.hasPublish()) {
-        channel.publish().messages().forEach(m => {
-          if (m.headers() && !m.headers().$id()) {
-            m.headers().json()['x-parser-schema-id'] = `<anonymous-schema-${++anonymousSchemaCounter}>`;
-          }
-
-          if (m.payload() && !m.payload().$id()) {
-            m.payload().json()['x-parser-schema-id'] = `<anonymous-schema-${++anonymousSchemaCounter}>`;
-          }
-        });
-      }
-      if (channel.hasSubscribe()) {
-        channel.subscribe().messages().forEach(m => {
-          if (m.headers() && !m.headers().$id()) {
-            m.headers().json()['x-parser-schema-id'] = `<anonymous-schema-${++anonymousSchemaCounter}>`;
-          }
-          
-          if (m.payload() && !m.payload().$id()) {
-            m.payload().json()['x-parser-schema-id'] = `<anonymous-schema-${++anonymousSchemaCounter}>`;
-          }
-        });
-      }
-    });
-  }
-}
-
-module.exports = addExtensions(AsyncAPIDocument);
+module.exports = addExtensions(Components);
 
 
 /***/ }),
@@ -4590,35 +4187,307 @@ module.exports = function generate_custom(it, $keyword, $ruleType) {
 
 /***/ }),
 
-/***/ 317:
+/***/ 324:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
-const { addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
+const { createMapOfType, getMapKeyOfType, addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+const Info = __webpack_require__(543);
+const Server = __webpack_require__(218);
+const Channel = __webpack_require__(693);
+const Components = __webpack_require__(305);
+const Message = __webpack_require__(212);
+const Tag = __webpack_require__(620);
 
 /**
- * Implements functions to deal with an ExternalDocs object.
+ * Implements functions to deal with the AsyncAPI document.
  * @class
  * @extends Base
- * @returns {ExternalDocs}
+ * @returns {AsyncAPIDocument}
  */
-class ExternalDocs extends Base {
+class AsyncAPIDocument extends Base {
+  constructor(...args) {
+    super(...args);
+
+    assignNameToAnonymousMessages(this);
+    assignIdToAnonymousSchemas(this);
+
+    assignNameToComponentMessages(this);
+    assignUidToComponentSchemas(this);
+  }
+
   /**
    * @returns {string}
    */
-  description() {
-    return this._json.description;
+  version() {
+    return this._json.asyncapi;
+  }
+
+  /**
+   * @returns {Info}
+   */
+  info() {
+    return new Info(this._json.info);
   }
   
   /**
    * @returns {string}
    */
-  url() {
-    return this._json.url;
+  id() {
+    return this._json.id;
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasServers() {
+    return !!this._json.servers;
+  }
+  
+  /**
+   * @returns {Object<string, Server>}
+   */
+  servers() {
+    return createMapOfType(this._json.servers, Server);
+  }
+
+  /**
+   * @param {string} name - Name of the server.
+   * @returns {Server}
+   */
+  server(name) {
+    return getMapKeyOfType(this._json.servers, name, Server);
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasChannels() {
+    return !!this._json.channels;
+  }
+  
+  /**
+   * @returns {Object<string, Channel>}
+   */
+  channels() {
+    return createMapOfType(this._json.channels, Channel, this);
+  }
+  
+  /**
+   * @returns {string[]}
+   */
+  channelNames() {
+    if (!this._json.channels) return [];
+    return Object.keys(this._json.channels);
+  }
+
+  /**
+   * @param {string} name - Name of the channel.
+   * @returns {Channel}
+   */
+  channel(name) {
+    return getMapKeyOfType(this._json.channels, name, Channel, this);
+  }
+
+  /**
+   * @returns {string}
+   */
+  defaultContentType() {
+    return this._json.defaultContentType || null;
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasComponents() {
+    return !!this._json.components;
+  }
+
+  /**
+   * @returns {Components}
+   */
+  components() {
+    if (!this._json.components) return null;
+    return new Components(this._json.components);
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasTags() {
+    return !!(this._json.tags && this._json.tags.length);
+  }
+
+  /**
+   * @returns {Tag[]}
+   */
+  tags() {
+    if (!this._json.tags) return [];
+    return this._json.tags.map(t => new Tag(t));
+  }
+
+  /**
+   * @returns {Map<Message>}
+   */
+  allMessages() {
+    const messages = new Map();
+    
+    if (this.hasChannels()) {
+      this.channelNames().forEach(channelName => {
+        const channel = this.channel(channelName);
+        if (channel.hasPublish()) {
+          channel.publish().messages().forEach(m => {
+            messages.set(m.uid(), m);
+          });
+        }
+        if (channel.hasSubscribe()) {
+          channel.subscribe().messages().forEach(m => {
+            messages.set(m.uid(), m);
+          });
+        }
+      });
+    }
+    
+    if (this.hasComponents()) {
+      Object.values(this.components().messages()).forEach(m => {
+          messages.set(m.uid(), m);
+      });
+    }
+    
+    return messages;
+  }
+
+  /**
+   * @returns {Map<Schema>}
+   */
+  allSchemas() {
+    const schemas = new Map();
+    
+    if (this.hasChannels()) {
+      this.channelNames().forEach(channelName => {
+        const channel = this.channel(channelName);
+
+        Object.values(channel.parameters()).forEach(p => {
+          if (p.schema()) {
+            schemas.set(p.schema().uid(), p.schema());
+          }
+        });
+
+        if (channel.hasPublish()) {
+          channel.publish().messages().forEach(m => {
+            if (m.headers()) {
+              schemas.set(m.headers().uid(), m.headers());
+            }
+
+            if (m.payload()) {
+              schemas.set(m.payload().uid(), m.payload());
+            }
+          });
+        }
+        if (channel.hasSubscribe()) {
+          channel.subscribe().messages().forEach(m => {
+            if (m.headers()) {
+              schemas.set(m.headers().uid(), m.headers());
+            }
+
+            if (m.payload()) {
+              schemas.set(m.payload().uid(), m.payload());
+            }
+          });
+        }
+      });
+    }
+
+    if (this.hasComponents()) {
+      Object.values(this.components().schemas()).forEach(s => {
+          schemas.set(s.uid(), s);
+      });
+    }
+    
+    return schemas;
   }
 }
 
-module.exports = addExtensions(ExternalDocs);
+function assignNameToComponentMessages(doc){
+  if (doc.hasComponents()) {
+    for(const [key, m] of Object.entries(doc.components().messages())){
+      if (m.name() === undefined) {
+        m.json()['x-parser-message-name'] = key;
+      }
+    }
+  }
+}
+function assignUidToComponentSchemas(doc){
+  if (doc.hasComponents()) {
+    for(const [key, s] of Object.entries(doc.components().schemas())){
+      s.json()['x-parser-schema-id'] = key;
+    }
+  }
+}
+function assignNameToAnonymousMessages(doc) {
+  let anonymousMessageCounter = 0;
+
+  if (doc.hasChannels()) {
+    doc.channelNames().forEach(channelName => {
+      const channel = doc.channel(channelName);
+      if (channel.hasPublish()) {
+        channel.publish().messages().forEach(m => {
+          if (m.name() === undefined) {
+            m.json()['x-parser-message-name'] = `<anonymous-message-${++anonymousMessageCounter}>`;
+          }
+        });
+      }
+      if (channel.hasSubscribe()) {
+        channel.subscribe().messages().forEach(m => {
+          if (m.name() === undefined) {
+            m.json()['x-parser-message-name'] = `<anonymous-message-${++anonymousMessageCounter}>`;
+          }
+        });
+      }
+    });
+  }
+}
+
+function assignIdToAnonymousSchemas(doc) {
+  let anonymousSchemaCounter = 0;
+
+  if (doc.hasChannels()) {
+    doc.channelNames().forEach(channelName => {
+      const channel = doc.channel(channelName);
+
+      Object.values(channel.parameters()).forEach(p => {
+        if (p.schema() && !p.schema().$id()) {
+          p.schema().json()['x-parser-schema-id'] = `<anonymous-schema-${++anonymousSchemaCounter}>`;
+        }
+      });
+
+      if (channel.hasPublish()) {
+        channel.publish().messages().forEach(m => {
+          if (m.headers() && !m.headers().$id()) {
+            m.headers().json()['x-parser-schema-id'] = `<anonymous-schema-${++anonymousSchemaCounter}>`;
+          }
+
+          if (m.payload() && !m.payload().$id()) {
+            m.payload().json()['x-parser-schema-id'] = `<anonymous-schema-${++anonymousSchemaCounter}>`;
+          }
+        });
+      }
+      if (channel.hasSubscribe()) {
+        channel.subscribe().messages().forEach(m => {
+          if (m.headers() && !m.headers().$id()) {
+            m.headers().json()['x-parser-schema-id'] = `<anonymous-schema-${++anonymousSchemaCounter}>`;
+          }
+          
+          if (m.payload() && !m.payload().$id()) {
+            m.payload().json()['x-parser-schema-id'] = `<anonymous-schema-${++anonymousSchemaCounter}>`;
+          }
+        });
+      }
+    });
+  }
+}
+
+module.exports = addExtensions(AsyncAPIDocument);
 
 
 /***/ }),
@@ -5524,123 +5393,6 @@ module.exports = new Type('tag:yaml.org,2002:js/function', {
 
 /***/ }),
 
-/***/ 357:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const parser = __webpack_require__(450);
-
-const noop = () => {}; // No operation
-
-parser.registerSchemaParser([
-  'application/vnd.aai.asyncapi;version=2.0.0',
-  'application/vnd.aai.asyncapi+json;version=2.0.0',
-  'application/vnd.aai.asyncapi+yaml;version=2.0.0',
-  'application/schema;version=draft-07',
-  'application/schema+json;version=draft-07',
-  'application/schema+yaml;version=draft-07',
-], noop);
-
-module.exports = parser;
-
-
-/***/ }),
-
-/***/ 362:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { createMapOfType, getMapKeyOfType, addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-const ChannelParameter = __webpack_require__(715);
-const PublishOperation = __webpack_require__(11);
-const SubscribeOperation = __webpack_require__(237);
-
-/**
- * Implements functions to deal with a Channel object.
- * @class
- * @extends Base
- * @returns {Channel}
- */
-class Channel extends Base {
-  /**
-   * @returns {string}
-   */
-  description() {
-    return this._json.description;
-  }
-  
-  /**
-   * @returns {Object<string, ChannelParameter>}
-   */
-  parameters() {
-    return createMapOfType(this._json.parameters, ChannelParameter);
-  }
-
-  /**
-   * @param {string} name - Name of the parameter.
-   * @returns {ChannelParameter}
-   */
-  parameter(name) {
-    return getMapKeyOfType(this._json.parameters, name, ChannelParameter);
-  }
-
-  /**
-   * @returns {boolean}
-   */
-  hasParameters() {
-    return !!this._json.parameters;
-  }
-
-  /**
-   * @returns {PublishOperation}
-   */
-  publish() {
-    if (!this._json.publish) return null;
-    return new PublishOperation(this._json.publish);
-  }
-
-  /**
-   * @returns {SubscribeOperation}
-   */
-  subscribe() {
-    if (!this._json.subscribe) return null;
-    return new SubscribeOperation(this._json.subscribe);
-  }
-
-  /**
-   * @returns {boolean}
-   */
-  hasPublish() {
-    return !!this._json.publish;
-  }
-
-  /**
-   * @returns {boolean}
-   */
-  hasSubscribe() {
-    return !!this._json.subscribe;
-  }
-  
-  /**
-   * @returns {Object}
-   */
-  bindings() {
-    return this._json.bindings || null;
-  }
-
-  /**
-   * @param {string} name - Name of the binding.
-   * @returns {Object}
-   */
-  binding(name) {
-    return this._json.bindings ? this._json.bindings[name] : null;
-  }
-}
-
-module.exports = addExtensions(Channel);
-
-
-/***/ }),
-
 /***/ 363:
 /***/ (function(module) {
 
@@ -6216,65 +5968,6 @@ function foundCircularReference (keyPath, $refs, options) {
 
 /***/ }),
 
-/***/ 420:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-const License = __webpack_require__(602);
-const Contact = __webpack_require__(975);
-
-/**
- * Implements functions to deal with the Info object.
- * @class Info
- * @extends Base
- * @returns {Info}
- */
-class Info extends Base {
-  /**
-   * @returns {string}
-   */
-  title() {
-    return this._json.title;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  version() {
-    return this._json.version;
-  }
-
-  description() {
-    return this._json.description;
-  }
-
-  termsOfService() {
-    return this._json.termsOfService;
-  }
-
-  /**
-   * @returns {License}
-   */
-  license() {
-    if (!this._json.license) return null;
-    return new License(this._json.license);
-  }
-
-  /**
-   * @returns {Contact}
-   */
-  contact() {
-    if (!this._json.contact) return null;
-    return new Contact(this._json.contact);
-  }
-}
-
-module.exports = addExtensions(Info);
-
-
-/***/ }),
-
 /***/ 431:
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
 
@@ -6357,284 +6050,6 @@ function escapeProperty(s) {
         .replace(/,/g, '%2C');
 }
 //# sourceMappingURL=command.js.map
-
-/***/ }),
-
-/***/ 436:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { addExtensions } = __webpack_require__(510);
-const MessageTraitable = __webpack_require__(680);
-
-/**
- * Implements functions to deal with a MessageTrait object.
- * @class
- * @extends Base
- * @returns {MessageTrait}
- */
-class MessageTrait extends MessageTraitable {
-}
-
-module.exports = addExtensions(MessageTrait);
-
-
-/***/ }),
-
-/***/ 450:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const Ajv = __webpack_require__(514);
-const fetch = __webpack_require__(454);
-const asyncapi = __webpack_require__(790);
-const $RefParser = __webpack_require__(274);
-const mergePatch = __webpack_require__(313).apply;
-const ParserError = __webpack_require__(150);
-const ParserErrorNoJS = __webpack_require__(294);
-const ParserErrorUnsupportedVersion = __webpack_require__(825);
-const { toJS } = __webpack_require__(510);
-const AsyncAPIDocument = __webpack_require__(305);
-
-const DEFAULT_SCHEMA_FORMAT = 'application/vnd.aai.asyncapi;version=2.0.0';
-const OPERATIONS = ['publish', 'subscribe'];
-const PARSERS = {};
-
-/**
- * @module Parser
- */
-module.exports = {
-  parse,
-  parseFromUrl,
-  registerSchemaParser,
-  ParserError,
-  ParserErrorNoJS,
-  ParserErrorUnsupportedVersion,
-  AsyncAPIDocument,
-};
-
-/**
- * Parses and validate an AsyncAPI document from YAML or JSON.
- * 
- * @name module:Parser#parse
- * @param {String} asyncapiYAMLorJSON An AsyncAPI document in JSON or YAML format.
- * @param {Object} [options] Configuration options.
- * @param {String} [options.path] Path to the AsyncAPI document. It will be used to resolve relative references.
- * @param {Object} [options.parse] Options object to pass to {@link https://apidevtools.org/json-schema-ref-parser/docs/options.html|json-schema-ref-parser}.
- * @param {Object} [options.resolve] Options object to pass to {@link https://apidevtools.org/json-schema-ref-parser/docs/options.html|json-schema-ref-parser}.
- * @param {Object} [options.dereference] Options object to pass to {@link https://apidevtools.org/json-schema-ref-parser/docs/options.html|json-schema-ref-parser}.
- * @param {Object} [options.applyTraits=true] Whether to resolve and apply traits or not.
- * @returns {Promise<AsyncAPIDocument>} The parsed AsyncAPI document.
- */
-async function parse(asyncapiYAMLorJSON, options = {}) {
-  let js;
-
-  try {
-    js = toJS(asyncapiYAMLorJSON);
-
-    if (typeof js !== 'object') {
-      throw new ParserErrorNoJS('Could not convert AsyncAPI to JSON.');
-    }
-    
-    if (!js.asyncapi || !asyncapi[js.asyncapi]) {
-      throw new ParserErrorUnsupportedVersion(`AsyncAPI version is missing or unsupported: ${js.asyncapi}.`, js);
-    }
-
-    if (options.applyTraits === undefined) options.applyTraits = true;
-
-    if (options.path) {
-      js = await $RefParser.dereference(options.path, js, {
-        parse: options.parse,
-        resolve: options.resolve,
-        dereference: options.dereference,
-      });
-    } else {
-      js = await $RefParser.dereference(js, {
-        parse: options.parse,
-        resolve: options.resolve,
-        dereference: options.dereference,
-      });
-    }
-  } catch (e) {
-    if (e instanceof ParserError) throw e;
-    if (e instanceof ParserErrorNoJS) throw e;
-    if (e instanceof ParserErrorUnsupportedVersion) throw e;
-    throw new ParserError(e.message, js);
-  }
-
-  const ajv = new Ajv({
-    allErrors: true,
-    schemaId: 'id',
-    logger: false,
-  });
-
-  ajv.addMetaSchema(__webpack_require__(780));
-
-  try {
-    const validate = ajv.compile(asyncapi[js.asyncapi]);
-    const valid = validate(js);
-    if (!valid) throw new ParserError('Invalid AsyncAPI document', js, validate.errors);
-
-    await iterateDocument(js, options);
-  } catch (e) {
-    throw new ParserError(e, e.parsedJSON, e.errors);
-  }
-
-  return new AsyncAPIDocument(js);
-}
-
-/**
- * Fetches an AsyncAPI document from the given URL and passes its content to the `parse` method.
- * 
- * @name module:Parser#parseFromUrl
- * @param {String} url URL where the AsyncAPI document is located.
- * @param {Object} [fetchOptions] Configuration to pass to the {@link https://developer.mozilla.org/en-US/docs/Web/API/Request|fetch} call.
- * @param {Object} [options] Configuration to pass to the {@link module:Parser#parse} method.
- * @returns {Promise<AsyncAPIDocument>} The parsed AsyncAPI document.
- */
-function parseFromUrl(url, fetchOptions = {}, options) {
-  return new Promise((resolve, reject) => {
-    fetch(url, fetchOptions)
-      .then(res => res.text())
-      .then(doc => parse(doc, options))
-      .then(result => resolve(result))
-      .catch(reject);
-  });
-}
-
-async function iterateDocument (js, options) {
-  for (let channelName in js.channels) {
-    const channel = js.channels[channelName];
-    const convert = OPERATIONS.map(async (opName) => {
-      const op = channel[opName];
-      if (op) {
-        if (options.applyTraits) {  
-          applyTraits(op);
-          applyTraits(op.message);
-        }
-        
-        const msg = op.message;
-        if (msg) await validateAndConvertMessage(msg);
-      }
-    });
-    await Promise.all(convert);
-  }
-}
-
-async function validateAndConvertMessage (msg) {
-  const schemaFormat = msg.schemaFormat || DEFAULT_SCHEMA_FORMAT;
-
-  await PARSERS[schemaFormat]({
-    schemaFormat,
-    message: msg,
-    defaultSchemaFormat: DEFAULT_SCHEMA_FORMAT,
-  });
-
-  msg.schemaFormat = DEFAULT_SCHEMA_FORMAT;
-}
-
-/**
- * Registers a new schema parser. Schema parsers are in charge of parsing and transforming payloads to AsyncAPI Schema format.
- * 
- * @name module:Parser#registerSchemaParser
- * @param {string[]} schemaFormats An array of schema formats the given schema parser is able to recognize and transform.
- * @param {Function} parserFunction The schema parser function.
- */
-function registerSchemaParser(schemaFormats, parserFunction) {
-  if (!Array.isArray(schemaFormats)) throw new ParserError(`schemaFormats must be an array of strings but found ${typeof schemaFormats}.`);
-  if (typeof parserFunction !== 'function') throw new ParserError(`parserFunction must be a function but found ${typeof parserFunction}.`);
-  schemaFormats.forEach((schemaFormat) => {
-    PARSERS[schemaFormat] = parserFunction;
-  });
-}
-
-function applyTraits(js) {
-  if (Array.isArray(js.traits)) {
-    for (let trait of js.traits) {
-      for (let key in trait) {
-        js[key] = mergePatch(js[key], trait[key]);
-      }
-    }
-
-    js['x-parser-original-traits'] = js.traits;
-    delete js.traits;
-  }
-}
-
-
-/***/ }),
-
-/***/ 452:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { createMapOfType, addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-const OAuthFlow = __webpack_require__(98);
-
-/**
- * Implements functions to deal with a SecurityScheme object.
- * @class
- * @extends Base
- * @returns {SecurityScheme}
- */
-class SecurityScheme extends Base {
-  /**
-   * @returns {string}
-   */
-  type() {
-    return this._json.type;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  description() {
-    return this._json.description;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  name() {
-    return this._json.name;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  in() {
-    return this._json.in;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  scheme() {
-    return this._json.scheme;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  bearerFormat() {
-    return this._json.bearerFormat;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  openIdConnectUrl() {
-    return this._json.openIdConnectUrl;
-  }
-  
-  /**
-   * @returns {Object<string, OAuthFlow>}
-   */
-  flows() {
-    return createMapOfType(this._json.flows, OAuthFlow);
-  }
-}
-
-module.exports = addExtensions(SecurityScheme);
-
 
 /***/ }),
 
@@ -10137,6 +9552,27 @@ exports.getState = getState;
 
 /***/ }),
 
+/***/ 474:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const parser = __webpack_require__(903);
+
+const noop = () => {}; // No operation
+
+parser.registerSchemaParser([
+  'application/vnd.aai.asyncapi;version=2.0.0',
+  'application/vnd.aai.asyncapi+json;version=2.0.0',
+  'application/vnd.aai.asyncapi+yaml;version=2.0.0',
+  'application/schema;version=draft-07',
+  'application/schema+json;version=draft-07',
+  'application/schema+yaml;version=draft-07',
+], noop);
+
+module.exports = parser;
+
+
+/***/ }),
+
 /***/ 502:
 /***/ (function(module) {
 
@@ -10209,68 +9645,15 @@ module.exports = {
 
 /***/ }),
 
-/***/ 510:
+/***/ 506:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
-const YAML = __webpack_require__(414);
+const ParserError = __webpack_require__(59);
 
-module.exports.toJS = (asyncapiYAMLorJSON) => {
-  if (!asyncapiYAMLorJSON) {
-    throw new Error(`Document can't be null, false or empty.`);
-  }
+class ParserErrorNoJS extends ParserError {
+}
 
-  if (typeof asyncapiYAMLorJSON === 'object') {
-    return asyncapiYAMLorJSON;
-  }
-
-  try {
-    return JSON.parse(asyncapiYAMLorJSON);
-  } catch (e) {
-    try {
-      return YAML.safeLoad(asyncapiYAMLorJSON);
-    } catch (err) {
-      err.message = `Document has to be either JSON or YAML: ${err.message}`;
-      throw err;
-    }
-  }
-};
-
-module.exports.createMapOfType = (obj, Type) => {
-  const result = {};
-  if (!obj) return result;
-
-  Object.keys(obj).forEach(key => {
-    result[key] = new Type(obj[key]);
-  });
-
-  return result;
-};
-
-module.exports.getMapKeyOfType = (obj, key, Type) => {
-  if (!obj) return null;
-  if (!obj[key]) return null;
-  return new Type(obj[key]);
-};
-
-module.exports.addExtensions = (obj) => {
-  obj.prototype.extensions = function () {
-    const result = {};
-    Object.keys(this._json).forEach(key => {
-      if (/^x-[\w\d\.\-\_]+$/.test(key)) {
-        result[key] = this._json[key];
-      }
-    });
-    return result;
-  };
-  
-  obj.prototype.ext = function (name) {
-    return this._json[name];
-  };
-  
-  obj.prototype.extension = obj.prototype.ext;
-
-  return obj;
-};
+module.exports = ParserErrorNoJS;
 
 
 /***/ }),
@@ -10867,86 +10250,6 @@ module.exports = {
 
 /***/ }),
 
-/***/ 537:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-const Tag = __webpack_require__(165);
-const ExternalDocs = __webpack_require__(317);
-
-/**
- * Implements functions to deal with the common properties Operation and OperationTrait object have.
- * @class
- * @extends Base
- * @returns {OperationTraitable}
- */
-class OperationTraitable extends Base {
-  /**
-   * @returns {string}
-   */
-  id() {
-    return this._json.operationId;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  summary() {
-    return this._json.summary;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  description() {
-    return this._json.description;
-  }
-
-  /**
-   * @returns {boolean}
-   */
-  hasTags() {
-    return !!(this._json.tags && this._json.tags.length);
-  }
-  
-  /**
-   * @returns {Tag[]}
-   */
-  tags() {
-    if (!this._json.tags) return [];
-    return this._json.tags.map(t => new Tag(t));
-  }
-
-  /**
-   * @returns {ExternalDocs}
-   */
-  externalDocs() {
-    if (!this._json.externalDocs) return null;
-    return new ExternalDocs(this._json.externalDocs);
-  }
-
-  /**
-   * @returns {Object}
-   */
-  bindings() {
-    return this._json.bindings || null;
-  }
-
-  /**
-   * @param {string} name - Name of the binding.
-   * @returns {Object}
-   */
-  binding(name) {
-    return this._json.bindings ? this._json.bindings[name] : null;
-  }
-}
-
-module.exports = addExtensions(OperationTraitable);
-
-
-/***/ }),
-
 /***/ 542:
 /***/ (function(module) {
 
@@ -11026,6 +10329,65 @@ module.exports = function generate_pattern(it, $keyword, $ruleType) {
   }
   return out;
 }
+
+
+/***/ }),
+
+/***/ 543:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+const License = __webpack_require__(710);
+const Contact = __webpack_require__(177);
+
+/**
+ * Implements functions to deal with the Info object.
+ * @class Info
+ * @extends Base
+ * @returns {Info}
+ */
+class Info extends Base {
+  /**
+   * @returns {string}
+   */
+  title() {
+    return this._json.title;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  version() {
+    return this._json.version;
+  }
+
+  description() {
+    return this._json.description;
+  }
+
+  termsOfService() {
+    return this._json.termsOfService;
+  }
+
+  /**
+   * @returns {License}
+   */
+  license() {
+    if (!this._json.license) return null;
+    return new License(this._json.license);
+  }
+
+  /**
+   * @returns {Contact}
+   */
+  contact() {
+    if (!this._json.contact) return null;
+    return new Contact(this._json.contact);
+  }
+}
+
+module.exports = addExtensions(Info);
 
 
 /***/ }),
@@ -11256,6 +10618,123 @@ module.exports = function generate_propertyNames(it, $keyword, $ruleType) {
 
 /***/ }),
 
+/***/ 567:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+
+/**
+ * Implements functions to deal with a ServerVariable object.
+ * @class
+ * @extends Base
+ * @returns {ServerVariable}
+ */
+class ServerVariable extends Base {
+  /**
+   * @returns {any[]}
+   */
+  allowedValues() {
+    return this._json.enum;
+  }
+
+  /**
+   * @param {string} name - Name of the variable.
+   * @returns {boolean}
+   */
+  allows(name) {
+    if (this._json.enum === undefined) return true;
+    return this._json.enum.includes(name);
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasAllowedValues() {
+    return this._json.enum !== undefined;
+  }
+
+  /**
+   * @returns {string}
+   */
+  defaultValue() {
+    return this._json.default;
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasDefaultValue() {
+    return this._json.default !== undefined;
+  }
+
+  /**
+   * @returns {string}
+   */
+  description() {
+    return this._json.description;
+  }
+
+  /**
+   * @returns {string[]}
+   */
+  examples() {
+    return this._json.examples;
+  }
+}
+
+module.exports = addExtensions(ServerVariable);
+
+
+/***/ }),
+
+/***/ 573:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const OperationTraitable = __webpack_require__(112);
+const Message = __webpack_require__(212);
+
+/**
+ * Implements functions to deal with an Operation object.
+ * @class
+ * @extends OperationTraitable
+ * @returns {Operation}
+ */
+class Operation extends OperationTraitable {
+  /**
+   * @returns {boolean}
+   */
+  hasMultipleMessages() {
+    if (this._json.message && this._json.message.oneOf && this._json.message.oneOf.length > 1) return true;
+    if (!this._json.message) return false;
+    return false;
+  }
+  
+  /**
+   * @returns {Message[]}
+   */
+  messages() {
+    if (!this._json.message) return [];
+    if (this._json.message.oneOf) return this._json.message.oneOf.map(m => new Message(m));
+    return [new Message(this._json.message)];
+  }
+  
+  /**
+   * @returns {Message}
+   */
+  message(index) {
+    if (!this._json.message) return null;
+    if (!this._json.message.oneOf) return new Message(this._json.message);
+    if (index > this._json.message.oneOf.length - 1) return null;
+    return new Message(this._json.message.oneOf[index]);
+  }
+}
+
+module.exports = Operation;
+
+
+/***/ }),
+
 /***/ 574:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
@@ -11297,10 +10776,10 @@ module.exports = new Schema({
 
 /***/ }),
 
-/***/ 589:
+/***/ 585:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
-const Base = __webpack_require__(38);
+const Base = __webpack_require__(31);
 
 /**
  * Implements functions to deal with a ServerSecurityRequirement object.
@@ -11316,35 +10795,137 @@ module.exports = ServerSecurityRequirement;
 
 /***/ }),
 
-/***/ 602:
+/***/ 604:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
-const { addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
+const { getMapKeyOfType, addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+const Tag = __webpack_require__(620);
+const ExternalDocs = __webpack_require__(625);
+const Schema = __webpack_require__(671);
+const CorrelationId = __webpack_require__(889);
 
 /**
- * Implements functions to deal with the License object.
+ * Implements functions to deal with a the common properties that Message and MessageTrait objects have.
  * @class
  * @extends Base
- * @returns {License}
+ * @returns {MessageTraitable}
  */
-class License extends Base {
+class MessageTraitable extends Base {
+  /**
+   * @returns {Schema}
+   */
+  headers() {
+    if (!this._json.headers) return null;
+    return new Schema(this._json.headers);
+  }
+
+  /**
+   * @param {string} name - Name of the header.
+   * @returns {Schema}
+   */
+  header(name) {
+    if (!this._json.headers) return null;
+    return getMapKeyOfType(this._json.headers.properties, name, Schema);
+  }
+
+  /**
+   * @returns {CorrelationId}
+   */
+  correlationId() {
+    if (!this._json.correlationId) return null;
+    return new CorrelationId(this._json.correlationId);
+  }
+
+  /**
+   * @returns {string}
+   */
+  schemaFormat() {
+    return 'application/schema+json;version=draft-07';
+  }
+
+  /**
+   * @returns {string}
+   */
+  contentType() {
+    return this._json.contentType;
+  }
+
   /**
    * @returns {string}
    */
   name() {
     return this._json.name;
   }
-  
+
   /**
    * @returns {string}
    */
-  url() {
-    return this._json.url;
+  title() {
+    return this._json.title;
+  }
+
+  /**
+   * @returns {string}
+   */
+  summary() {
+    return this._json.summary;
+  }
+
+  /**
+   * @returns {string}
+   */
+  description() {
+    return this._json.description;
+  }
+
+  /**
+   * @returns {ExternalDocs}
+   */
+  externalDocs() {
+    if (!this._json.externalDocs) return null;
+    return new ExternalDocs(this._json.externalDocs);
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasTags() {
+    return !!(this._json.tags && this._json.tags.length);
+  }
+
+  /**
+   * @returns {Tag[]}
+   */
+  tags() {
+    if (!this._json.tags) return [];
+    return this._json.tags.map(t => new Tag(t));
+  }
+
+  /**
+   * @returns {Object}
+   */
+  bindings() {
+    return this._json.bindings || null;
+  }
+
+  /**
+   * @param {string} name - Name of the binding.
+   * @returns {Object}
+   */
+  binding(name) {
+    return this._json.bindings ? this._json.bindings[name] : null;
+  }
+
+  /**
+   * @returns {any[]}
+   */
+  examples() {
+    return this._json.examples;
   }
 }
 
-module.exports = addExtensions(License);
+module.exports = addExtensions(MessageTraitable);
 
 
 /***/ }),
@@ -11382,10 +10963,85 @@ module.exports = new Schema({
 
 /***/ }),
 
+/***/ 620:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+const ExternalDocs = __webpack_require__(625);
+
+/**
+ * Implements functions to deal with a Tag object.
+ * @class
+ * @extends Base
+ * @returns {Tag}
+ */
+class Tag extends Base {
+  /**
+   * @returns {string}
+   */
+  name() {
+    return this._json.name;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  description() {
+    return this._json.description;
+  }
+  
+  /**
+   * @returns {ExternalDocs}
+   */
+  externalDocs() {
+    if (!this._json.externalDocs) return null;
+    return new ExternalDocs(this._json.externalDocs);
+  }
+}
+
+module.exports = addExtensions(Tag);
+
+
+/***/ }),
+
 /***/ 622:
 /***/ (function(module) {
 
 module.exports = require("path");
+
+/***/ }),
+
+/***/ 625:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+
+/**
+ * Implements functions to deal with an ExternalDocs object.
+ * @class
+ * @extends Base
+ * @returns {ExternalDocs}
+ */
+class ExternalDocs extends Base {
+  /**
+   * @returns {string}
+   */
+  description() {
+    return this._json.description;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  url() {
+    return this._json.url;
+  }
+}
+
+module.exports = addExtensions(ExternalDocs);
+
 
 /***/ }),
 
@@ -11510,130 +11166,6 @@ module.exports = new Type('tag:yaml.org,2002:js/regexp', {
   predicate: isRegExp,
   represent: representJavascriptRegExp
 });
-
-
-/***/ }),
-
-/***/ 630:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { getMapKeyOfType, createMapOfType, addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-const Message = __webpack_require__(766);
-const Schema = __webpack_require__(178);
-const SecurityScheme = __webpack_require__(452);
-const ChannelParameter = __webpack_require__(715);
-const CorrelationId = __webpack_require__(39);
-const OperationTrait = __webpack_require__(731);
-const MessageTrait = __webpack_require__(436);
-
-/**
- * Implements functions to deal with a Components object.
- * @class
- * @extends Base
- * @returns {Components}
- */
-class Components extends Base {
-  /**
-   * @returns {Object<string, Message>}
-   */
-  messages() {
-    return createMapOfType(this._json.messages, Message);
-  }
-
-  /**
-   * @returns {Message}
-   */
-  message(name) {
-    return getMapKeyOfType(this._json.messages, name, Message);
-  }
-  
-  /**
-   * @returns {Object<string, Schema>}
-   */
-  schemas() {
-    return createMapOfType(this._json.schemas, Schema);
-  }
-
-  /**
-   * @returns {Schema}
-   */
-  schema(name) {
-    return getMapKeyOfType(this._json.schemas, name, Schema);
-  }
-  
-  /**
-   * @returns {Object<string, SecurityScheme>}
-   */
-  securitySchemes() {
-    return createMapOfType(this._json.securitySchemes, SecurityScheme);
-  }
-  
-  /**
-   * @returns {SecurityScheme}
-   */
-  securityScheme(name) {
-    return getMapKeyOfType(this._json.securitySchemes, name, SecurityScheme);
-  }
-  
-  /**
-   * @returns {Object<string, ChannelParameter>}
-   */
-  parameters() {
-    return createMapOfType(this._json.parameters, ChannelParameter);
-  }
-
-  /**
-   * @returns {ChannelParameter}
-   */
-  parameter(name) {
-    return getMapKeyOfType(this._json.parameters, name, ChannelParameter);
-  }
-  
-  /**
-   * @returns {Object<string, CorrelationId>}
-   */
-  correlationIds() {
-    return createMapOfType(this._json.correlationIds, CorrelationId);
-  }
-
-  /**
-   * @returns {CorrelationId}
-   */
-  correlationId(name) {
-    return getMapKeyOfType(this._json.correlationIds, name, CorrelationId);
-  }
-  
-  /**
-   * @returns {Object<string, OperationTrait>}
-   */
-  operationTraits() {
-    return createMapOfType(this._json.operationTraits, OperationTrait);
-  }
-
-  /**
-   * @returns {OperationTrait}
-   */
-  operationTrait(name) {
-    return getMapKeyOfType(this._json.operationTraits, name, OperationTrait);
-  }
-  
-  /**
-   * @returns {Object<string, MessageTrait>}
-   */
-  messageTraits() {
-    return createMapOfType(this._json.messageTraits, MessageTrait);
-  }
-
-  /**
-   * @returns {MessageTrait}
-   */
-  messageTrait(name) {
-    return getMapKeyOfType(this._json.messageTraits, name, MessageTrait);
-  }
-}
-
-module.exports = addExtensions(Components);
 
 
 /***/ }),
@@ -12479,10 +12011,426 @@ function inspect() {
 
 /***/ }),
 
+/***/ 668:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+
+/**
+ * Implements functions to deal with a OAuthFlow object.
+ * @class
+ * @extends Base
+ * @returns {OAuthFlow}
+ */
+class OAuthFlow extends Base {
+  /**
+   * @returns {string}
+   */
+  authorizationUrl() {
+    return this._json.authorizationUrl;
+  }
+
+  /**
+   * @returns {string}
+   */
+  tokenUrl() {
+    return this._json.tokenUrl;
+  }
+
+  /**
+   * @returns {string}
+   */
+  refreshUrl() {
+    return this._json.refreshUrl;
+  }
+
+  /**
+   * @returns {Object<string, string>}
+   */
+  scopes() {
+    return this._json.scopes;
+  }
+}
+
+module.exports = addExtensions(OAuthFlow);
+
+
+/***/ }),
+
 /***/ 669:
 /***/ (function(module) {
 
 module.exports = require("util");
+
+/***/ }),
+
+/***/ 671:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+
+/**
+ * Implements functions to deal with a Schema object.
+ * @class
+ * @extends Base
+ * @returns {Schema}
+ */
+class Schema extends Base {
+  /**
+   * @returns {string}
+   */
+  uid() {
+    return this.$id() || this.ext('x-parser-schema-id');
+  }
+  
+  /**
+   * @returns {string}
+   */
+  $id() {
+    return this._json.$id;
+  }
+  
+  /**
+   * @returns {number}
+   */
+  multipleOf() {
+    return this._json.multipleOf;
+  }
+  
+  /**
+   * @returns {number}
+   */
+  maximum() {
+    return this._json.maximum;
+  }
+  
+  /**
+   * @returns {number}
+   */
+  exclusiveMaximum() {
+    return this._json.exclusiveMaximum;
+  }
+  
+  /**
+   * @returns {number}
+   */
+  minimum() {
+    return this._json.minimum;
+  }
+  
+  /**
+   * @returns {number}
+   */
+  exclusiveMinimum() {
+    return this._json.exclusiveMinimum;
+  }
+  
+  /**
+   * @returns {number}
+   */
+  maxLength() {
+    return this._json.maxLength;
+  }
+  
+  /**
+   * @returns {number}
+   */
+  minLength() {
+    return this._json.minLength;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  pattern() {
+    return this._json.pattern;
+  }
+  
+  /**
+   * @returns {number}
+   */
+  maxItems() {
+    return this._json.maxItems;
+  }
+  
+  /**
+   * @returns {number}
+   */
+  minItems() {
+    return this._json.minItems;
+  }
+  
+  /**
+   * @returns {boolean}
+   */
+  uniqueItems() {
+    return !!this._json.uniqueItems;
+  }
+  
+  /**
+   * @returns {number}
+   */
+  maxProperties() {
+    return this._json.maxProperties;
+  }
+  
+  /**
+   * @returns {number}
+   */
+  minProperties() {
+    return this._json.minProperties;
+  }
+  
+  /**
+   * @returns {string[]}
+   */
+  required() {
+    return this._json.required;
+  }
+  
+  /**
+   * @returns {any[]}
+   */
+  enum() {
+    return this._json.enum;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  type() {
+    return this._json.type;
+  }
+  
+  /**
+   * @returns {Schema[]}
+   */
+  allOf() {
+    if (!this._json.allOf) return null;
+    return this._json.allOf.map(s => new Schema(s));
+  }
+  
+  /**
+   * @returns {Schema[]}
+   */
+  oneOf() {
+    if (!this._json.oneOf) return null;
+    return this._json.oneOf.map(s => new Schema(s));
+  }
+  
+  /**
+   * @returns {Schema[]}
+   */
+  anyOf() {
+    if (!this._json.anyOf) return null;
+    return this._json.anyOf.map(s => new Schema(s));
+  }
+  
+  /**
+   * @returns {Schema}
+   */
+  not() {
+    if (!this._json.not) return null;
+    return new Schema(this._json.not);
+  }
+  
+  /**
+   * @returns {Schema|Schema[]}
+   */
+  items() {
+    if (!this._json.items) return null;
+    if (Array.isArray(this._json.items)) {
+      return this._json.items.map(s => new Schema(s));
+    }
+    return new Schema(this._json.items);
+  }
+  
+  /**
+   * @returns {Object<string, Schema>}
+   */
+  properties() {
+    if (!this._json.properties) return null;
+    const result = {};
+    Object.keys(this._json.properties).forEach(k => {
+      result[k] = new Schema(this._json.properties[k]);
+    });
+    return result;
+  }
+  
+  /**
+   * @returns {boolean|Schema}
+   */
+  additionalProperties() {
+    const ap = this._json.additionalProperties;
+    if (ap === undefined || ap === null) return;
+    if (typeof ap === 'boolean') return ap;
+    return new Schema(ap);
+  }
+  
+  /**
+   * @returns {Schema}
+   */
+  additionalItems() {
+    const ai = this._json.additionalItems;
+    if (ai === undefined || ai === null) return;
+    return new Schema(ai);
+  }
+  
+  /**
+   * @returns {Object<string, Schema>}
+   */
+  patternProperties() {
+    if (!this._json.patternProperties) return null;
+    const result = {};
+    Object.keys(this._json.patternProperties).map(k => {
+      result[k] = new Schema(this._json.patternProperties[k]);
+    });
+    return result;
+  }
+
+  /**
+   * @returns {any}
+   */
+  const() {
+    return this._json.const;
+  }
+
+  /**
+   * @returns {Schema}
+   */
+  contains() {
+    if (!this._json.contains) return null;
+    return new Schema(this._json.contains);
+  }
+
+  /**
+   * @returns {Object<string, Schema|string[]>}
+   */
+  dependencies() {
+    if (!this._json.dependencies) return null;
+    const result = {};
+    Object.keys(this._json.dependencies).forEach(k => {
+      if (!Array.isArray(this._json.dependencies[k])) {
+        result[k] = new Schema(this._json.dependencies[k]);
+      } else {
+        result[k] = this._json.dependencies[k];
+      }
+    });
+    return result;
+  }
+
+  /**
+   * @returns {Schema}
+   */
+  propertyNames() {
+    if (!this._json.propertyNames) return null;
+    return new Schema(this._json.propertyNames);
+  }
+
+  /**
+   * @returns {Schema}
+   */
+  if() {
+    if (!this._json.if) return null;
+    return new Schema(this._json.if);
+  }
+
+  /**
+   * @returns {Schema}
+   */
+  then() {
+    if (!this._json.then) return null;
+    return new Schema(this._json.then);
+  }
+
+  /**
+   * @returns {Schema}
+   */
+  else() {
+    if (!this._json.else) return null;
+    return new Schema(this._json.else);
+  }
+
+  /**
+   * @returns {string}
+   */
+  format() {
+    return this._json.format;
+  }
+
+  /**
+   * @returns {string}
+   */
+  contentEncoding() {
+    return this._json.contentEncoding;
+  }
+
+  /**
+   * @returns {string}
+   */
+  contentMediaType() {
+    return this._json.contentMediaType;
+  }
+
+  /**
+   * @returns {Object<string, Schema>}
+   */
+  definitions() {
+    if (!this._json.definitions) return null;
+    const result = {};
+    Object.keys(this._json.definitions).map(k => {
+      result[k] = new Schema(this._json.definitions[k]);
+    });
+    return result;
+  }
+
+  /**
+   * @returns {string}
+   */
+  description() {
+    return this._json.description;
+  }
+
+  /**
+   * @returns {string}
+   */
+  title() {
+    return this._json.title;
+  }
+
+  /**
+   * @returns {any}
+   */
+  default() {
+    return this._json.default;
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  readOnly() {
+    return !!this._json.readOnly;
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  writeOnly() {
+    return !!this._json.writeOnly;
+  }
+
+  /**
+   * @returns {any[]}
+   */
+  examples() {
+    return this._json.examples;
+  }
+}
+
+module.exports = addExtensions(Schema);
+
 
 /***/ }),
 
@@ -12574,141 +12522,6 @@ module.exports = function generate_not(it, $keyword, $ruleType) {
   }
   return out;
 }
-
-
-/***/ }),
-
-/***/ 680:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { getMapKeyOfType, addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-const Tag = __webpack_require__(165);
-const ExternalDocs = __webpack_require__(317);
-const Schema = __webpack_require__(178);
-const CorrelationId = __webpack_require__(39);
-
-/**
- * Implements functions to deal with a the common properties that Message and MessageTrait objects have.
- * @class
- * @extends Base
- * @returns {MessageTraitable}
- */
-class MessageTraitable extends Base {
-  /**
-   * @returns {Schema}
-   */
-  headers() {
-    if (!this._json.headers) return null;
-    return new Schema(this._json.headers);
-  }
-
-  /**
-   * @param {string} name - Name of the header.
-   * @returns {Schema}
-   */
-  header(name) {
-    if (!this._json.headers) return null;
-    return getMapKeyOfType(this._json.headers.properties, name, Schema);
-  }
-
-  /**
-   * @returns {CorrelationId}
-   */
-  correlationId() {
-    if (!this._json.correlationId) return null;
-    return new CorrelationId(this._json.correlationId);
-  }
-
-  /**
-   * @returns {string}
-   */
-  schemaFormat() {
-    return 'application/schema+json;version=draft-07';
-  }
-
-  /**
-   * @returns {string}
-   */
-  contentType() {
-    return this._json.contentType;
-  }
-
-  /**
-   * @returns {string}
-   */
-  name() {
-    return this._json.name;
-  }
-
-  /**
-   * @returns {string}
-   */
-  title() {
-    return this._json.title;
-  }
-
-  /**
-   * @returns {string}
-   */
-  summary() {
-    return this._json.summary;
-  }
-
-  /**
-   * @returns {string}
-   */
-  description() {
-    return this._json.description;
-  }
-
-  /**
-   * @returns {ExternalDocs}
-   */
-  externalDocs() {
-    if (!this._json.externalDocs) return null;
-    return new ExternalDocs(this._json.externalDocs);
-  }
-
-  /**
-   * @returns {boolean}
-   */
-  hasTags() {
-    return !!(this._json.tags && this._json.tags.length);
-  }
-
-  /**
-   * @returns {Tag[]}
-   */
-  tags() {
-    if (!this._json.tags) return [];
-    return this._json.tags.map(t => new Tag(t));
-  }
-
-  /**
-   * @returns {Object}
-   */
-  bindings() {
-    return this._json.bindings || null;
-  }
-
-  /**
-   * @param {string} name - Name of the binding.
-   * @returns {Object}
-   */
-  binding(name) {
-    return this._json.bindings ? this._json.bindings[name] : null;
-  }
-
-  /**
-   * @returns {any[]}
-   */
-  examples() {
-    return this._json.examples;
-  }
-}
-
-module.exports = addExtensions(MessageTraitable);
 
 
 /***/ }),
@@ -13734,6 +13547,184 @@ module.exports = function ucs2length(str) {
 
 /***/ }),
 
+/***/ 693:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { createMapOfType, getMapKeyOfType, addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+const ChannelParameter = __webpack_require__(749);
+const PublishOperation = __webpack_require__(185);
+const SubscribeOperation = __webpack_require__(229);
+
+/**
+ * Implements functions to deal with a Channel object.
+ * @class
+ * @extends Base
+ * @returns {Channel}
+ */
+class Channel extends Base {
+  /**
+   * @returns {string}
+   */
+  description() {
+    return this._json.description;
+  }
+  
+  /**
+   * @returns {Object<string, ChannelParameter>}
+   */
+  parameters() {
+    return createMapOfType(this._json.parameters, ChannelParameter);
+  }
+
+  /**
+   * @param {string} name - Name of the parameter.
+   * @returns {ChannelParameter}
+   */
+  parameter(name) {
+    return getMapKeyOfType(this._json.parameters, name, ChannelParameter);
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasParameters() {
+    return !!this._json.parameters;
+  }
+
+  /**
+   * @returns {PublishOperation}
+   */
+  publish() {
+    if (!this._json.publish) return null;
+    return new PublishOperation(this._json.publish);
+  }
+
+  /**
+   * @returns {SubscribeOperation}
+   */
+  subscribe() {
+    if (!this._json.subscribe) return null;
+    return new SubscribeOperation(this._json.subscribe);
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasPublish() {
+    return !!this._json.publish;
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  hasSubscribe() {
+    return !!this._json.subscribe;
+  }
+  
+  /**
+   * @returns {Object}
+   */
+  bindings() {
+    return this._json.bindings || null;
+  }
+
+  /**
+   * @param {string} name - Name of the binding.
+   * @returns {Object}
+   */
+  binding(name) {
+    return this._json.bindings ? this._json.bindings[name] : null;
+  }
+}
+
+module.exports = addExtensions(Channel);
+
+
+/***/ }),
+
+/***/ 696:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const YAML = __webpack_require__(414);
+
+module.exports.toJS = (asyncapiYAMLorJSON) => {
+  if (!asyncapiYAMLorJSON) {
+    throw new Error(`Document can't be null, false or empty.`);
+  }
+
+  if (typeof asyncapiYAMLorJSON === 'object') {
+    return asyncapiYAMLorJSON;
+  }
+
+  try {
+    return JSON.parse(asyncapiYAMLorJSON);
+  } catch (e) {
+    try {
+      return YAML.safeLoad(asyncapiYAMLorJSON);
+    } catch (err) {
+      err.message = `Document has to be either JSON or YAML: ${err.message}`;
+      throw err;
+    }
+  }
+};
+
+module.exports.createMapOfType = (obj, Type) => {
+  const result = {};
+  if (!obj) return result;
+
+  Object.keys(obj).forEach(key => {
+    result[key] = new Type(obj[key]);
+  });
+
+  return result;
+};
+
+module.exports.getMapKeyOfType = (obj, key, Type) => {
+  if (!obj) return null;
+  if (!obj[key]) return null;
+  return new Type(obj[key]);
+};
+
+module.exports.addExtensions = (obj) => {
+  obj.prototype.extensions = function () {
+    const result = {};
+    Object.keys(this._json).forEach(key => {
+      if (/^x-[\w\d\.\-\_]+$/.test(key)) {
+        result[key] = this._json[key];
+      }
+    });
+    return result;
+  };
+  
+  obj.prototype.ext = function (name) {
+    return this._json[name];
+  };
+  
+  obj.prototype.extension = obj.prototype.ext;
+
+  return obj;
+};
+
+
+/***/ }),
+
+/***/ 708:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const ParserError = __webpack_require__(59);
+
+class ParserErrorUnsupportedVersion extends ParserError {
+  constructor(e, json) {
+    super(e, json);
+  }
+}
+
+module.exports = ParserErrorUnsupportedVersion;
+
+
+/***/ }),
+
 /***/ 709:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
@@ -14012,44 +14003,35 @@ function setValue (pointer, token, value) {
 
 /***/ }),
 
-/***/ 715:
+/***/ 710:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
-const { addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-const Schema = __webpack_require__(178);
+const { addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
 
 /**
- * Implements functions to deal with a ChannelParameter object.
+ * Implements functions to deal with the License object.
  * @class
  * @extends Base
- * @returns {ChannelParameter}
+ * @returns {License}
  */
-class ChannelParameter extends Base {
+class License extends Base {
   /**
    * @returns {string}
    */
-  description() {
-    return this._json.description;
+  name() {
+    return this._json.name;
   }
   
   /**
    * @returns {string}
    */
-  location() {
-    return this._json.location;
-  }
-  
-  /**
-   * @returns {Schema}
-   */
-  schema() {
-    if (!this._json.schema) return null;
-    return new Schema(this._json.schema);
+  url() {
+    return this._json.url;
   }
 }
 
-module.exports = addExtensions(ChannelParameter);
+module.exports = addExtensions(License);
 
 
 /***/ }),
@@ -14086,119 +14068,6 @@ module.exports = new Schema({
     __webpack_require__(100)
   ]
 });
-
-
-/***/ }),
-
-/***/ 727:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { createMapOfType, getMapKeyOfType, addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-const ServerVariable = __webpack_require__(979);
-const ServerSecurityRequirement = __webpack_require__(589);
-
-/**
- * Implements functions to deal with a Server object.
- * @class
- * @extends Base
- * @returns {Server}
- */
-class Server extends Base {
-  /**
-   * @returns {string}
-   */
-  description() {
-    return this._json.description;
-  }
-
-  /**
-   * @returns {string}
-   */
-  url() {
-    return this._json.url;
-  }
-
-  /**
-   * @returns {string}
-   */
-  protocol() {
-    return this._json.protocol;
-  }
-
-  /**
-   * @returns {string}
-   */
-  protocolVersion() {
-    return this._json.protocolVersion;
-  }
-
-  /**
-   * @returns {Object<string, ServerVariable>}
-   */
-  variables() {
-    return createMapOfType(this._json.variables, ServerVariable);
-  }
-
-  /**
-   * @param {string} name - Name of the server variable.
-   * @returns {ServerVariable}
-   */
-  variable(name) {
-    return getMapKeyOfType(this._json.variables, name, ServerVariable);
-  }
-
-  /**
-   * @returns {boolean}
-   */
-  hasVariables() {
-    return !!this._json.variables;
-  }
-
-  /**
-   * @returns {ServerSecurityRequirement[]}
-   */
-  security() {
-    if (!this._json.security) return null;
-    return this._json.security.map(sec => new ServerSecurityRequirement(sec));
-  }
-
-  /**
-   * @returns {Object}
-   */
-  bindings() {
-    return this._json.bindings || null;
-  }
-
-  /**
-   * @param {string} name - Name of the binding.
-   * @returns {Object}
-   */
-  binding(name) {
-    return this._json.bindings ? this._json.bindings[name] : null;
-  }
-}
-
-module.exports = addExtensions(Server);
-
-
-/***/ }),
-
-/***/ 731:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const OperationTraitable = __webpack_require__(537);
-
-/**
- * Implements functions to deal with a OperationTrait object.
- * @class
- * @extends OperationTraitable
- * @returns {OperationTrait}
- */
-class OperationTrait extends OperationTraitable {
-}
-
-module.exports = OperationTrait;
 
 
 /***/ }),
@@ -14732,6 +14601,48 @@ function vars(arr, statement) {
 
 /***/ }),
 
+/***/ 749:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+const Schema = __webpack_require__(671);
+
+/**
+ * Implements functions to deal with a ChannelParameter object.
+ * @class
+ * @extends Base
+ * @returns {ChannelParameter}
+ */
+class ChannelParameter extends Base {
+  /**
+   * @returns {string}
+   */
+  description() {
+    return this._json.description;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  location() {
+    return this._json.location;
+  }
+  
+  /**
+   * @returns {Schema}
+   */
+  schema() {
+    if (!this._json.schema) return null;
+    return new Schema(this._json.schema);
+  }
+}
+
+module.exports = addExtensions(ChannelParameter);
+
+
+/***/ }),
+
 /***/ 756:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
@@ -14886,58 +14797,86 @@ function isEmpty (value) {
 
 /***/ }),
 
+/***/ 759:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { createMapOfType, addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+const OAuthFlow = __webpack_require__(668);
+
+/**
+ * Implements functions to deal with a SecurityScheme object.
+ * @class
+ * @extends Base
+ * @returns {SecurityScheme}
+ */
+class SecurityScheme extends Base {
+  /**
+   * @returns {string}
+   */
+  type() {
+    return this._json.type;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  description() {
+    return this._json.description;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  name() {
+    return this._json.name;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  in() {
+    return this._json.in;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  scheme() {
+    return this._json.scheme;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  bearerFormat() {
+    return this._json.bearerFormat;
+  }
+  
+  /**
+   * @returns {string}
+   */
+  openIdConnectUrl() {
+    return this._json.openIdConnectUrl;
+  }
+  
+  /**
+   * @returns {Object<string, OAuthFlow>}
+   */
+  flows() {
+    return createMapOfType(this._json.flows, OAuthFlow);
+  }
+}
+
+module.exports = addExtensions(SecurityScheme);
+
+
+/***/ }),
+
 /***/ 761:
 /***/ (function(module) {
 
 module.exports = require("zlib");
-
-/***/ }),
-
-/***/ 766:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const MessageTraitable = __webpack_require__(680);
-const Schema = __webpack_require__(178);
-
-/**
- * Implements functions to deal with a Message object.
- * @class
- * @extends MessageTraitable
- * @returns {Message}
- */
-class Message extends MessageTraitable {
-  /**
-   * @returns {string}
-   */
-  uid() {
-    return this.name() || this.ext('x-parser-message-name') || Buffer.from(JSON.stringify(this._json)).toString('base64');
-  }
-
-  /**
-   * @returns {Schema}
-   */
-  payload() {
-    if (!this._json.payload) return null;
-    return new Schema(this._json.payload);
-  }
-
-  /**
-   * @returns {any}
-   */
-  originalPayload() {
-    return this._json['x-parser-original-payload'] || this.payload();
-  }
-
-  /**
-   * @returns {string}
-   */
-  originalSchemaFormat() {
-    return this._json['x-parser-original-schema-format'] || this.schemaFormat();
-  }
-}
-
-module.exports = Message;
-
 
 /***/ }),
 
@@ -15038,6 +14977,25 @@ module.exports = {"id":"http://json-schema.org/draft-04/schema#","$schema":"http
 
 /***/ }),
 
+/***/ 788:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const OperationTraitable = __webpack_require__(112);
+
+/**
+ * Implements functions to deal with a OperationTrait object.
+ * @class
+ * @extends OperationTraitable
+ * @returns {OperationTrait}
+ */
+class OperationTrait extends OperationTraitable {
+}
+
+module.exports = OperationTrait;
+
+
+/***/ }),
+
 /***/ 790:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
@@ -15081,53 +15039,6 @@ module.exports = function maybe (cb, promise) {
 
 /***/ }),
 
-/***/ 794:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const OperationTraitable = __webpack_require__(537);
-const Message = __webpack_require__(766);
-
-/**
- * Implements functions to deal with an Operation object.
- * @class
- * @extends OperationTraitable
- * @returns {Operation}
- */
-class Operation extends OperationTraitable {
-  /**
-   * @returns {boolean}
-   */
-  hasMultipleMessages() {
-    if (this._json.message && this._json.message.oneOf && this._json.message.oneOf.length > 1) return true;
-    if (!this._json.message) return false;
-    return false;
-  }
-  
-  /**
-   * @returns {Message[]}
-   */
-  messages() {
-    if (!this._json.message) return [];
-    if (this._json.message.oneOf) return this._json.message.oneOf.map(m => new Message(m));
-    return [new Message(this._json.message)];
-  }
-  
-  /**
-   * @returns {Message}
-   */
-  message(index) {
-    if (!this._json.message) return null;
-    if (!this._json.message.oneOf) return new Message(this._json.message);
-    if (index > this._json.message.oneOf.length - 1) return null;
-    return new Message(this._json.message.oneOf[index]);
-  }
-}
-
-module.exports = Operation;
-
-
-/***/ }),
-
 /***/ 809:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
@@ -15166,22 +15077,6 @@ module.exports = new Type('tag:yaml.org,2002:null', {
   },
   defaultStyle: 'lowercase'
 });
-
-
-/***/ }),
-
-/***/ 825:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const ParserError = __webpack_require__(150);
-
-class ParserErrorUnsupportedVersion extends ParserError {
-  constructor(e, json) {
-    super(e, json);
-  }
-}
-
-module.exports = ParserErrorUnsupportedVersion;
 
 
 /***/ }),
@@ -17804,6 +17699,39 @@ module.exports = {
 
 /***/ }),
 
+/***/ 889:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { addExtensions } = __webpack_require__(696);
+const Base = __webpack_require__(31);
+
+/**
+ * Implements functions to deal with a CorrelationId object.
+ * @class
+ * @extends Base
+ * @returns {CorrelationId}
+ */
+class CorrelationId extends Base {
+  /**
+   * @returns {string}
+   */
+  description() {
+    return this._json.description;
+  }
+
+  /**
+   * @returns {string}
+   */
+  location() {
+    return this._json.location;
+  }
+}
+
+module.exports = addExtensions(CorrelationId);
+
+
+/***/ }),
+
 /***/ 890:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
@@ -18073,6 +18001,188 @@ module.exports = function generate_anyOf(it, $keyword, $ruleType) {
     }
   }
   return out;
+}
+
+
+/***/ }),
+
+/***/ 903:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const Ajv = __webpack_require__(514);
+const fetch = __webpack_require__(454);
+const asyncapi = __webpack_require__(790);
+const $RefParser = __webpack_require__(274);
+const mergePatch = __webpack_require__(313).apply;
+const ParserError = __webpack_require__(59);
+const ParserErrorNoJS = __webpack_require__(506);
+const ParserErrorUnsupportedVersion = __webpack_require__(708);
+const { toJS } = __webpack_require__(696);
+const AsyncAPIDocument = __webpack_require__(324);
+
+const DEFAULT_SCHEMA_FORMAT = 'application/vnd.aai.asyncapi;version=2.0.0';
+const OPERATIONS = ['publish', 'subscribe'];
+const PARSERS = {};
+
+/**
+ * @module Parser
+ */
+module.exports = {
+  parse,
+  parseFromUrl,
+  registerSchemaParser,
+  ParserError,
+  ParserErrorNoJS,
+  ParserErrorUnsupportedVersion,
+  AsyncAPIDocument,
+};
+
+/**
+ * Parses and validate an AsyncAPI document from YAML or JSON.
+ * 
+ * @name module:Parser#parse
+ * @param {String} asyncapiYAMLorJSON An AsyncAPI document in JSON or YAML format.
+ * @param {Object} [options] Configuration options.
+ * @param {String} [options.path] Path to the AsyncAPI document. It will be used to resolve relative references.
+ * @param {Object} [options.parse] Options object to pass to {@link https://apidevtools.org/json-schema-ref-parser/docs/options.html|json-schema-ref-parser}.
+ * @param {Object} [options.resolve] Options object to pass to {@link https://apidevtools.org/json-schema-ref-parser/docs/options.html|json-schema-ref-parser}.
+ * @param {Object} [options.dereference] Options object to pass to {@link https://apidevtools.org/json-schema-ref-parser/docs/options.html|json-schema-ref-parser}.
+ * @param {Object} [options.applyTraits=true] Whether to resolve and apply traits or not.
+ * @returns {Promise<AsyncAPIDocument>} The parsed AsyncAPI document.
+ */
+async function parse(asyncapiYAMLorJSON, options = {}) {
+  let js;
+
+  try {
+    js = toJS(asyncapiYAMLorJSON);
+
+    if (typeof js !== 'object') {
+      throw new ParserErrorNoJS('Could not convert AsyncAPI to JSON.');
+    }
+    
+    if (!js.asyncapi || !asyncapi[js.asyncapi]) {
+      throw new ParserErrorUnsupportedVersion(`AsyncAPI version is missing or unsupported: ${js.asyncapi}.`, js);
+    }
+
+    if (options.applyTraits === undefined) options.applyTraits = true;
+
+    if (options.path) {
+      js = await $RefParser.dereference(options.path, js, {
+        parse: options.parse,
+        resolve: options.resolve,
+        dereference: options.dereference,
+      });
+    } else {
+      js = await $RefParser.dereference(js, {
+        parse: options.parse,
+        resolve: options.resolve,
+        dereference: options.dereference,
+      });
+    }
+  } catch (e) {
+    if (e instanceof ParserError) throw e;
+    if (e instanceof ParserErrorNoJS) throw e;
+    if (e instanceof ParserErrorUnsupportedVersion) throw e;
+    throw new ParserError(e.message, js);
+  }
+
+  const ajv = new Ajv({
+    allErrors: true,
+    schemaId: 'id',
+    logger: false,
+  });
+
+  ajv.addMetaSchema(__webpack_require__(780));
+
+  try {
+    const validate = ajv.compile(asyncapi[js.asyncapi]);
+    const valid = validate(js);
+    if (!valid) throw new ParserError('Invalid AsyncAPI document', js, validate.errors);
+
+    await iterateDocument(js, options);
+  } catch (e) {
+    throw new ParserError(e, e.parsedJSON, e.errors);
+  }
+
+  return new AsyncAPIDocument(js);
+}
+
+/**
+ * Fetches an AsyncAPI document from the given URL and passes its content to the `parse` method.
+ * 
+ * @name module:Parser#parseFromUrl
+ * @param {String} url URL where the AsyncAPI document is located.
+ * @param {Object} [fetchOptions] Configuration to pass to the {@link https://developer.mozilla.org/en-US/docs/Web/API/Request|fetch} call.
+ * @param {Object} [options] Configuration to pass to the {@link module:Parser#parse} method.
+ * @returns {Promise<AsyncAPIDocument>} The parsed AsyncAPI document.
+ */
+function parseFromUrl(url, fetchOptions = {}, options) {
+  return new Promise((resolve, reject) => {
+    fetch(url, fetchOptions)
+      .then(res => res.text())
+      .then(doc => parse(doc, options))
+      .then(result => resolve(result))
+      .catch(reject);
+  });
+}
+
+async function iterateDocument (js, options) {
+  for (let channelName in js.channels) {
+    const channel = js.channels[channelName];
+    const convert = OPERATIONS.map(async (opName) => {
+      const op = channel[opName];
+      if (op) {
+        if (options.applyTraits) {  
+          applyTraits(op);
+          applyTraits(op.message);
+        }
+        
+        const msg = op.message;
+        if (msg) await validateAndConvertMessage(msg);
+      }
+    });
+    await Promise.all(convert);
+  }
+}
+
+async function validateAndConvertMessage (msg) {
+  const schemaFormat = msg.schemaFormat || DEFAULT_SCHEMA_FORMAT;
+
+  await PARSERS[schemaFormat]({
+    schemaFormat,
+    message: msg,
+    defaultSchemaFormat: DEFAULT_SCHEMA_FORMAT,
+  });
+
+  msg.schemaFormat = DEFAULT_SCHEMA_FORMAT;
+}
+
+/**
+ * Registers a new schema parser. Schema parsers are in charge of parsing and transforming payloads to AsyncAPI Schema format.
+ * 
+ * @name module:Parser#registerSchemaParser
+ * @param {string[]} schemaFormats An array of schema formats the given schema parser is able to recognize and transform.
+ * @param {Function} parserFunction The schema parser function.
+ */
+function registerSchemaParser(schemaFormats, parserFunction) {
+  if (!Array.isArray(schemaFormats)) throw new ParserError(`schemaFormats must be an array of strings but found ${typeof schemaFormats}.`);
+  if (typeof parserFunction !== 'function') throw new ParserError(`parserFunction must be a function but found ${typeof parserFunction}.`);
+  schemaFormats.forEach((schemaFormat) => {
+    PARSERS[schemaFormat] = parserFunction;
+  });
+}
+
+function applyTraits(js) {
+  if (Array.isArray(js.traits)) {
+    for (let trait of js.traits) {
+      for (let key in trait) {
+        js[key] = mergePatch(js[key], trait[key]);
+      }
+    }
+
+    js['x-parser-original-traits'] = js.traits;
+    delete js.traits;
+  }
 }
 
 
@@ -19017,120 +19127,10 @@ module.exports = function generate_validate(it, $keyword, $ruleType) {
 
 /***/ }),
 
-/***/ 975:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-
-/**
- * Implements functions to deal with the Contact object.
- * @class
- * @extends Base
- * @returns {Contact}
- */
-class Contact extends Base {
-  /**
-   * @returns {string}
-   */
-  name() {
-    return this._json.name;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  url() {
-    return this._json.url;
-  }
-  
-  /**
-   * @returns {string}
-   */
-  email() {
-    return this._json.email;
-  }
-}
-
-module.exports = addExtensions(Contact);
-
-
-/***/ }),
-
 /***/ 977:
 /***/ (function(module) {
 
 module.exports = {"title":"AsyncAPI 1.2.0 schema.","id":"http://asyncapi.hitchhq.com/v1/schema.json#","$schema":"http://json-schema.org/draft-04/schema#","type":"object","required":["asyncapi","info"],"oneOf":[{"required":["topics"]},{"required":["stream"]},{"required":["events"]}],"additionalProperties":false,"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}},"properties":{"asyncapi":{"type":"string","enum":["1.0.0","1.1.0","1.2.0"],"description":"The AsyncAPI specification version of this document."},"info":{"$ref":"#/definitions/info"},"baseTopic":{"type":"string","pattern":"^[^/.]","description":"The base topic to the API. Example: 'hitch'.","default":""},"servers":{"type":"array","items":{"$ref":"#/definitions/server"},"uniqueItems":true},"topics":{"$ref":"#/definitions/topics"},"stream":{"$ref":"#/definitions/stream","description":"The list of messages a consumer can read or write from/to a streaming API."},"events":{"$ref":"#/definitions/events","description":"The list of messages an events API sends and/or receives."},"components":{"$ref":"#/definitions/components"},"tags":{"type":"array","items":{"$ref":"#/definitions/tag"},"uniqueItems":true},"security":{"type":"array","items":{"$ref":"#/definitions/SecurityRequirement"}},"externalDocs":{"$ref":"#/definitions/externalDocs"}},"definitions":{"Reference":{"type":"object","required":["$ref"],"properties":{"$ref":{"type":"string","format":"uri"}}},"info":{"type":"object","description":"General information about the API.","required":["version","title"],"additionalProperties":false,"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}},"properties":{"title":{"type":"string","description":"A unique and precise title of the API."},"version":{"type":"string","description":"A semantic version number of the API."},"description":{"type":"string","description":"A longer description of the API. Should be different from the title. CommonMark is allowed."},"termsOfService":{"type":"string","description":"A URL to the Terms of Service for the API. MUST be in the format of a URL.","format":"uri"},"contact":{"$ref":"#/definitions/contact"},"license":{"$ref":"#/definitions/license"}}},"contact":{"type":"object","description":"Contact information for the owners of the API.","additionalProperties":false,"properties":{"name":{"type":"string","description":"The identifying name of the contact person/organization."},"url":{"type":"string","description":"The URL pointing to the contact information.","format":"uri"},"email":{"type":"string","description":"The email address of the contact person/organization.","format":"email"}},"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}}},"license":{"type":"object","required":["name"],"additionalProperties":false,"properties":{"name":{"type":"string","description":"The name of the license type. It's encouraged to use an OSI compatible license."},"url":{"type":"string","description":"The URL pointing to the license.","format":"uri"}},"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}}},"server":{"type":"object","description":"An object representing a Server.","required":["url","scheme"],"additionalProperties":false,"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}},"properties":{"url":{"type":"string"},"description":{"type":"string"},"scheme":{"type":"string","description":"The transfer protocol.","enum":["kafka","kafka-secure","amqp","amqps","mqtt","mqtts","secure-mqtt","ws","wss","stomp","stomps","jms","http","https"]},"schemeVersion":{"type":"string"},"variables":{"$ref":"#/definitions/serverVariables"}}},"serverVariables":{"type":"object","additionalProperties":{"$ref":"#/definitions/serverVariable"}},"serverVariable":{"type":"object","description":"An object representing a Server Variable for server URL template substitution.","minProperties":1,"additionalProperties":false,"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}},"properties":{"enum":{"type":"array","items":{"type":"string"},"uniqueItems":true},"default":{"type":"string"},"description":{"type":"string"}}},"topics":{"type":"object","description":"Relative paths to the individual topics. They must be relative to the 'baseTopic'.","patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"},"^[^.]":{"$ref":"#/definitions/topicItem"}},"additionalProperties":false},"components":{"type":"object","description":"An object to hold a set of reusable objects for different aspects of the AsyncAPI Specification.","additionalProperties":false,"properties":{"schemas":{"$ref":"#/definitions/schemas"},"messages":{"$ref":"#/definitions/messages"},"securitySchemes":{"type":"object","patternProperties":{"^[a-zA-Z0-9\\.\\-_]+$":{"oneOf":[{"$ref":"#/definitions/Reference"},{"$ref":"#/definitions/SecurityScheme"}]}}},"parameters":{"$ref":"#/definitions/parameters"}}},"schemas":{"type":"object","additionalProperties":{"$ref":"#/definitions/schema"},"description":"JSON objects describing schemas the API uses."},"messages":{"type":"object","additionalProperties":{"$ref":"#/definitions/message"},"description":"JSON objects describing the messages being consumed and produced by the API."},"parameters":{"type":"object","additionalProperties":{"$ref":"#/definitions/parameter"},"description":"JSON objects describing re-usable topic parameters."},"schema":{"type":"object","description":"A deterministic version of a JSON Schema object.","patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}},"properties":{"$ref":{"type":"string"},"format":{"type":"string"},"title":{"$ref":"http://json-schema.org/draft-04/schema#/properties/title"},"description":{"$ref":"http://json-schema.org/draft-04/schema#/properties/description"},"default":{"$ref":"http://json-schema.org/draft-04/schema#/properties/default"},"multipleOf":{"$ref":"http://json-schema.org/draft-04/schema#/properties/multipleOf"},"maximum":{"$ref":"http://json-schema.org/draft-04/schema#/properties/maximum"},"exclusiveMaximum":{"$ref":"http://json-schema.org/draft-04/schema#/properties/exclusiveMaximum"},"minimum":{"$ref":"http://json-schema.org/draft-04/schema#/properties/minimum"},"exclusiveMinimum":{"$ref":"http://json-schema.org/draft-04/schema#/properties/exclusiveMinimum"},"maxLength":{"$ref":"http://json-schema.org/draft-04/schema#/definitions/positiveInteger"},"minLength":{"$ref":"http://json-schema.org/draft-04/schema#/definitions/positiveIntegerDefault0"},"pattern":{"$ref":"http://json-schema.org/draft-04/schema#/properties/pattern"},"maxItems":{"$ref":"http://json-schema.org/draft-04/schema#/definitions/positiveInteger"},"minItems":{"$ref":"http://json-schema.org/draft-04/schema#/definitions/positiveIntegerDefault0"},"uniqueItems":{"$ref":"http://json-schema.org/draft-04/schema#/properties/uniqueItems"},"maxProperties":{"$ref":"http://json-schema.org/draft-04/schema#/definitions/positiveInteger"},"minProperties":{"$ref":"http://json-schema.org/draft-04/schema#/definitions/positiveIntegerDefault0"},"required":{"$ref":"http://json-schema.org/draft-04/schema#/definitions/stringArray"},"enum":{"$ref":"http://json-schema.org/draft-04/schema#/properties/enum"},"additionalProperties":{"anyOf":[{"$ref":"#/definitions/schema"},{"type":"boolean"}],"default":{}},"type":{"$ref":"http://json-schema.org/draft-04/schema#/properties/type"},"items":{"anyOf":[{"$ref":"#/definitions/schema"},{"type":"array","minItems":1,"items":{"$ref":"#/definitions/schema"}}],"default":{}},"allOf":{"type":"array","minItems":1,"items":{"$ref":"#/definitions/schema"}},"oneOf":{"type":"array","minItems":2,"items":{"$ref":"#/definitions/schema"}},"anyOf":{"type":"array","minItems":2,"items":{"$ref":"#/definitions/schema"}},"not":{"$ref":"#/definitions/schema"},"properties":{"type":"object","additionalProperties":{"$ref":"#/definitions/schema"},"default":{}},"discriminator":{"type":"string"},"readOnly":{"type":"boolean","default":false},"xml":{"$ref":"#/definitions/xml"},"externalDocs":{"$ref":"#/definitions/externalDocs"},"example":{}},"additionalProperties":false},"xml":{"type":"object","additionalProperties":false,"properties":{"name":{"type":"string"},"namespace":{"type":"string"},"prefix":{"type":"string"},"attribute":{"type":"boolean","default":false},"wrapped":{"type":"boolean","default":false}}},"externalDocs":{"type":"object","additionalProperties":false,"description":"information about external documentation","required":["url"],"properties":{"description":{"type":"string"},"url":{"type":"string","format":"uri"}},"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}}},"topicItem":{"type":"object","additionalProperties":false,"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}},"minProperties":1,"properties":{"$ref":{"type":"string"},"parameters":{"type":"array","uniqueItems":true,"minItems":1,"items":{"$ref":"#/definitions/parameter"}},"publish":{"$ref":"#/definitions/operation"},"subscribe":{"$ref":"#/definitions/operation"},"deprecated":{"type":"boolean","default":false}}},"parameter":{"additionalProperties":false,"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}},"properties":{"description":{"type":"string","description":"A brief description of the parameter. This could contain examples of use.  GitHub Flavored Markdown is allowed."},"name":{"type":"string","description":"The name of the parameter."},"schema":{"$ref":"#/definitions/schema"},"$ref":{"type":"string"}}},"operation":{"oneOf":[{"$ref":"#/definitions/message"},{"type":"object","required":["oneOf"],"additionalProperties":false,"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}},"properties":{"oneOf":{"type":"array","minItems":2,"items":{"$ref":"#/definitions/message"}}}}]},"stream":{"title":"Stream Object","type":"object","additionalProperties":false,"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}},"minProperties":1,"properties":{"framing":{"title":"Stream Framing Object","type":"object","patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}},"minProperties":1,"oneOf":[{"additionalProperties":false,"properties":{"type":{"type":"string","enum":["chunked"]},"delimiter":{"type":"string","enum":["\\r\\n","\\n"],"default":"\\r\\n"}}},{"additionalProperties":false,"properties":{"type":{"type":"string","enum":["sse"]},"delimiter":{"type":"string","enum":["\\n\\n"],"default":"\\n\\n"}}}]},"read":{"title":"Stream Read Object","type":"array","uniqueItems":true,"minItems":1,"items":{"$ref":"#/definitions/message"}},"write":{"title":"Stream Write Object","type":"array","uniqueItems":true,"minItems":1,"items":{"$ref":"#/definitions/message"}}}},"events":{"title":"Events Object","type":"object","additionalProperties":false,"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}},"minProperties":1,"anyOf":[{"required":["receive"]},{"required":["send"]}],"properties":{"receive":{"title":"Events Receive Object","type":"array","uniqueItems":true,"minItems":1,"items":{"$ref":"#/definitions/message"}},"send":{"title":"Events Send Object","type":"array","uniqueItems":true,"minItems":1,"items":{"$ref":"#/definitions/message"}}}},"message":{"type":"object","additionalProperties":false,"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}},"properties":{"$ref":{"type":"string"},"headers":{"$ref":"#/definitions/schema"},"payload":{"$ref":"#/definitions/schema"},"tags":{"type":"array","items":{"$ref":"#/definitions/tag"},"uniqueItems":true},"summary":{"type":"string","description":"A brief summary of the message."},"description":{"type":"string","description":"A longer description of the message. CommonMark is allowed."},"externalDocs":{"$ref":"#/definitions/externalDocs"},"deprecated":{"type":"boolean","default":false},"example":{}}},"vendorExtension":{"description":"Any property starting with x- is valid.","additionalProperties":true,"additionalItems":true},"tag":{"type":"object","additionalProperties":false,"required":["name"],"properties":{"name":{"type":"string"},"description":{"type":"string"},"externalDocs":{"$ref":"#/definitions/externalDocs"}},"patternProperties":{"^x-":{"$ref":"#/definitions/vendorExtension"}}},"SecurityScheme":{"oneOf":[{"$ref":"#/definitions/userPassword"},{"$ref":"#/definitions/apiKey"},{"$ref":"#/definitions/X509"},{"$ref":"#/definitions/symmetricEncryption"},{"$ref":"#/definitions/asymmetricEncryption"},{"$ref":"#/definitions/HTTPSecurityScheme"}]},"userPassword":{"type":"object","required":["type"],"properties":{"type":{"type":"string","enum":["userPassword"]},"description":{"type":"string"}},"patternProperties":{"^x-":{}},"additionalProperties":false},"apiKey":{"type":"object","required":["type","in"],"properties":{"type":{"type":"string","enum":["apiKey"]},"in":{"type":"string","enum":["user","password"]},"description":{"type":"string"}},"patternProperties":{"^x-":{}},"additionalProperties":false},"X509":{"type":"object","required":["type"],"properties":{"type":{"type":"string","enum":["X509"]},"description":{"type":"string"}},"patternProperties":{"^x-":{}},"additionalProperties":false},"symmetricEncryption":{"type":"object","required":["type"],"properties":{"type":{"type":"string","enum":["symmetricEncryption"]},"description":{"type":"string"}},"patternProperties":{"^x-":{}},"additionalProperties":false},"asymmetricEncryption":{"type":"object","required":["type"],"properties":{"type":{"type":"string","enum":["asymmetricEncryption"]},"description":{"type":"string"}},"patternProperties":{"^x-":{}},"additionalProperties":false},"HTTPSecurityScheme":{"oneOf":[{"$ref":"#/definitions/NonBearerHTTPSecurityScheme"},{"$ref":"#/definitions/BearerHTTPSecurityScheme"},{"$ref":"#/definitions/APIKeyHTTPSecurityScheme"}]},"NonBearerHTTPSecurityScheme":{"not":{"type":"object","properties":{"scheme":{"type":"string","enum":["bearer"]}}},"type":"object","required":["scheme","type"],"properties":{"scheme":{"type":"string"},"description":{"type":"string"},"type":{"type":"string","enum":["http"]}},"patternProperties":{"^x-":{}},"additionalProperties":false},"BearerHTTPSecurityScheme":{"type":"object","required":["type","scheme"],"properties":{"scheme":{"type":"string","enum":["bearer"]},"bearerFormat":{"type":"string"},"type":{"type":"string","enum":["http"]},"description":{"type":"string"}},"patternProperties":{"^x-":{}},"additionalProperties":false},"APIKeyHTTPSecurityScheme":{"type":"object","required":["type","name","in"],"properties":{"type":{"type":"string","enum":["httpApiKey"]},"name":{"type":"string"},"in":{"type":"string","enum":["header","query","cookie"]},"description":{"type":"string"}},"patternProperties":{"^x-":{}},"additionalProperties":false},"SecurityRequirement":{"type":"object","additionalProperties":{"type":"array","items":{"type":"string"}}},"title":{"$ref":"http://json-schema.org/draft-04/schema#/properties/title"},"description":{"$ref":"http://json-schema.org/draft-04/schema#/properties/description"},"default":{"$ref":"http://json-schema.org/draft-04/schema#/properties/default"},"multipleOf":{"$ref":"http://json-schema.org/draft-04/schema#/properties/multipleOf"},"maximum":{"$ref":"http://json-schema.org/draft-04/schema#/properties/maximum"},"exclusiveMaximum":{"$ref":"http://json-schema.org/draft-04/schema#/properties/exclusiveMaximum"},"minimum":{"$ref":"http://json-schema.org/draft-04/schema#/properties/minimum"},"exclusiveMinimum":{"$ref":"http://json-schema.org/draft-04/schema#/properties/exclusiveMinimum"},"maxLength":{"$ref":"http://json-schema.org/draft-04/schema#/definitions/positiveInteger"},"minLength":{"$ref":"http://json-schema.org/draft-04/schema#/definitions/positiveIntegerDefault0"},"pattern":{"$ref":"http://json-schema.org/draft-04/schema#/properties/pattern"},"maxItems":{"$ref":"http://json-schema.org/draft-04/schema#/definitions/positiveInteger"},"minItems":{"$ref":"http://json-schema.org/draft-04/schema#/definitions/positiveIntegerDefault0"},"uniqueItems":{"$ref":"http://json-schema.org/draft-04/schema#/properties/uniqueItems"},"enum":{"$ref":"http://json-schema.org/draft-04/schema#/properties/enum"}}};
-
-/***/ }),
-
-/***/ 979:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const { addExtensions } = __webpack_require__(510);
-const Base = __webpack_require__(38);
-
-/**
- * Implements functions to deal with a ServerVariable object.
- * @class
- * @extends Base
- * @returns {ServerVariable}
- */
-class ServerVariable extends Base {
-  /**
-   * @returns {any[]}
-   */
-  allowedValues() {
-    return this._json.enum;
-  }
-
-  /**
-   * @param {string} name - Name of the variable.
-   * @returns {boolean}
-   */
-  allows(name) {
-    if (this._json.enum === undefined) return true;
-    return this._json.enum.includes(name);
-  }
-
-  /**
-   * @returns {boolean}
-   */
-  hasAllowedValues() {
-    return this._json.enum !== undefined;
-  }
-
-  /**
-   * @returns {string}
-   */
-  defaultValue() {
-    return this._json.default;
-  }
-
-  /**
-   * @returns {boolean}
-   */
-  hasDefaultValue() {
-    return this._json.default !== undefined;
-  }
-
-  /**
-   * @returns {string}
-   */
-  description() {
-    return this._json.description;
-  }
-
-  /**
-   * @returns {string[]}
-   */
-  examples() {
-    return this._json.examples;
-  }
-}
-
-module.exports = addExtensions(ServerVariable);
-
 
 /***/ }),
 

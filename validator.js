@@ -1,4 +1,4 @@
-const parser = require('asyncapi-parser');
+const parser = require('@asyncapi/parser');
 const fs = require('fs');
 const path = require('path');
 
