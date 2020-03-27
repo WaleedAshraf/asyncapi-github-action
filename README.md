@@ -27,3 +27,7 @@ You should use `filepath: './schemas/asyncapi.yaml'`
     filepath: 'asyncapi.yaml'
 ```
 You can specify version with `@v<release-version>`. It follows semantic release. For latest release, please check [releases](https://github.com/WaleedAshraf/asyncapi-github-action/releases) page.
+
+Here is screen shot of example usage:
+
+![Example Usage](./assets/example.png "Example Usage")
