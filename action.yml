@@ -2,8 +2,8 @@ name: 'asyncapi-github-action'
 author: 'Waleed Ashraf'
 description: 'Github Action for AsyncAPI schema validation'
 inputs:
-  sc:
-    filepath: 'Path of asyncapi schema file'
+  filepath:
+    description: 'Path of asyncapi schema file'
     required: true
     default: 'asyncapi.yaml'
 runs:
