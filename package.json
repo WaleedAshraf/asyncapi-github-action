@@ -1,7 +1,7 @@
 {
   "name": "asyncapi-github-action",
-  "version": "0.0.3",
-  "description": "Github action for AyncAPI schema validation",
+  "version": "0.0.4",
+  "description": "Github action for AsyncAPI schema validation",
   "keywords": [
     "GitHub",
     "Actions",
@@ -24,8 +24,8 @@
     "test": "eslint index.js && jest"
   },
   "dependencies": {
-    "@actions/core": "^1.1.1",
-    "@asyncapi/parser": "^0.16.0"
+    "@actions/core": "^1.2.6",
+    "@asyncapi/parser": "^0.16.2"
   },
   "devDependencies": {
     "@zeit/ncc": "^0.20.5",
