@@ -1,6 +1,6 @@
 {
   "name": "asyncapi-github-action",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Github action for AsyncAPI schema validation",
   "keywords": [
     "GitHub",
@@ -25,11 +25,11 @@
   },
   "dependencies": {
     "@actions/core": "^1.2.6",
-    "@asyncapi/parser": "^0.16.2"
+    "@asyncapi/parser": "^1.10.0"
   },
   "devDependencies": {
     "@zeit/ncc": "^0.20.5",
-    "eslint": "^6.3.0",
-    "jest": "^24.9.0"
+    "eslint": "^8.1.0",
+    "jest": "^27.3.1"
   }
 }
