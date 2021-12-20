@@ -11,8 +11,7 @@ info:
 
 servers:
   mosquitto:
-    url: mqtt://test.mosquitto.org
-    protocol: mqtt
+    $ref: './server/mock-server-schema.yaml'
 
 channels:
   light/measured:

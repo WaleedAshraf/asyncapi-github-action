@@ -8,7 +8,7 @@ const validate = async (filePath) => {
 
   const dir = process.env.GITHUB_WORKSPACE || __dirname
   const fullPath = path.resolve(dir, filePath)
-  console.log(`schema file full path:${fullPath}`)
+  console.log(`schema file fullpath:${fullPath}`)
   const data = fs.readFileSync(fullPath, 'utf8')
   await parser.parse(data, {path: filePath})
   console.log('schema is valid')
