@@ -17,7 +17,7 @@ test('should throw error on invalid schema', async () => {
 // shows how the runner will run a javascript action with env / stdout protocol
 test('should read filepath from env', () => {
   const ip = path.join(__dirname, '../index.js')
-  let env_variables = 'PATH=' + process.env.PATH
-  let cmd = `${env_variables} node ${ip}`
+  const env_variables = 'PATH=' + process.env.PATH
+  const cmd = `${env_variables} node ${ip}`
   console.log(cp.execSync(cmd, {env: {INPUT_FILEPATH: './test/mock-schema.yaml'}}).toString())
 })

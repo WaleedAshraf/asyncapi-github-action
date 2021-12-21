@@ -1,0 +1,2 @@
+url: mqtt://test.mosquitto.org
+protocol: mqtt
