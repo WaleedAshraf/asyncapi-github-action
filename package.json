@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@actions/core": "^1.8.2",
+    "@asyncapi/avro-schema-parser": "^1.0.1",
     "@asyncapi/parser": "^1.15.0"
   },
   "devDependencies": {

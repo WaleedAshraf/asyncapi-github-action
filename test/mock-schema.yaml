@@ -15,7 +15,7 @@ servers:
 
 channels:
   light/measured:
-    publish:
+    subscribe:
       summary: Inform about environmental lighting conditions for a particular streetlight.
       operationId: onLightMeasured
       message:
@@ -34,3 +34,37 @@ channels:
               type: string
               format: date-time
               description: Date and time when the message was sent.
+
+  light/observed:
+    subscribe:
+      summary: Inform about observed environmental lighting conditions changes for a particular streetlight.
+      operationId: onLightChangeObserved
+      message:
+        schemaFormat: "application/vnd.apache.avro;version=1.9.0"
+        payload:
+          type: record
+          name: LightMeasurement
+          namespace: org.streetlights
+          doc: Light measurement information
+          fields: 
+            - name: id
+              type: int
+              doc: Id of the streetlight.
+            - name: lumens
+              type: int
+              doc: Light intensity measured in lumens.
+            - name: diff
+              type: int
+              doc: Diff in lumens from last measurement
+            - name: sentAt
+              type: string
+              doc: Date and time when the message was sent.
+
+  light/commands:
+    publish:
+      summary: API to request instant light measurement.
+      operationId: measureLight
+      message:
+        schemaFormat: "application/vnd.apache.avro;version=1.9.0"
+        payload:
+          $ref: "./schema/light.command.MeasureLight.avsc"

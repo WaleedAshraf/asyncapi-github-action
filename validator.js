@@ -1,6 +1,9 @@
 const parser = require('@asyncapi/parser')
+const avroSchemaParser = require('@asyncapi/avro-schema-parser')
 const fs = require('fs')
 const path = require('path')
+
+parser.registerSchemaParser(avroSchemaParser);
 
 const validate = async (filePath) => {
   if (typeof filePath !== 'string')

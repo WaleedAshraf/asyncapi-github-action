@@ -1,0 +1,12 @@
+{
+  "name": "MeasureLight",
+  "type": "record",
+  "namespace": "org.streetlights",
+  "fields": [
+    {
+      "name": "requested_at",
+      "type": "string",
+      "doc": "Date and time when the message was sent."
+    }
+  ]
+}
