@@ -215,8 +215,11 @@ module.exports = new Type('tag:yaml.org,2002:seq', {
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
 const parser = __webpack_require__(474)
+const avroSchemaParser = __webpack_require__(173)
 const fs = __webpack_require__(747)
 const path = __webpack_require__(622)
+
+parser.registerSchemaParser(avroSchemaParser);
 
 const validate = async (filePath) => {
   if (typeof filePath !== 'string')
@@ -2645,7 +2648,128 @@ module.exports = function generate_contains(it, $keyword, $ruleType) {
 /* 159 */,
 /* 160 */,
 /* 161 */,
-/* 162 */,
+/* 162 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+"use strict";
+/* jshint node: true */
+
+
+
+/**
+ * Node.js entry point (see `etc/browser/` for browserify's entry points).
+ *
+ * It also adds Node.js specific functionality (for example a few convenience
+ * functions to read Avro files from the local filesystem).
+ */
+
+var containers = __webpack_require__(929),
+    services = __webpack_require__(182),
+    specs = __webpack_require__(494),
+    types = __webpack_require__(453),
+    utils = __webpack_require__(777),
+    fs = __webpack_require__(747),
+    util = __webpack_require__(669);
+
+
+/** Parse a schema and return the corresponding type or service. */
+function parse(any, opts) {
+  var schemaOrProtocol = specs.read(any);
+  return schemaOrProtocol.protocol ?
+    services.Service.forProtocol(schemaOrProtocol, opts) :
+    types.Type.forSchema(schemaOrProtocol, opts);
+}
+
+/** Extract a container file's header synchronously. */
+function extractFileHeader(path, opts) {
+  opts = opts || {};
+
+  var decode = opts.decode === undefined ? true : !!opts.decode;
+  var size = Math.max(opts.size || 4096, 4);
+  var buf = utils.newBuffer(size);
+  var fd = fs.openSync(path, 'r');
+
+  try {
+    var pos = fs.readSync(fd, buf, 0, size);
+    if (pos < 4 || !containers.MAGIC_BYTES.equals(buf.slice(0, 4))) {
+      return null;
+    }
+
+    var tap = new utils.Tap(buf);
+    var header = null;
+    do {
+      header = containers.HEADER_TYPE._read(tap);
+    } while (!isValid());
+    if (decode !== false) {
+      var meta = header.meta;
+      meta['avro.schema'] = JSON.parse(meta['avro.schema'].toString());
+      if (meta['avro.codec'] !== undefined) {
+        meta['avro.codec'] = meta['avro.codec'].toString();
+      }
+    }
+    return header;
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  function isValid() {
+    if (tap.isValid()) {
+      return true;
+    }
+    var len = 2 * tap.buf.length;
+    var buf = utils.newBuffer(len);
+    len = fs.readSync(fd, buf, 0, len);
+    tap.buf = Buffer.concat([tap.buf, buf]);
+    tap.pos = 0;
+    return false;
+  }
+}
+
+/** Readable stream of records from a local Avro file. */
+function createFileDecoder(path, opts) {
+  return fs.createReadStream(path)
+    .pipe(new containers.streams.BlockDecoder(opts));
+}
+
+/** Writable stream of records to a local Avro file. */
+function createFileEncoder(path, schema, opts) {
+  var encoder = new containers.streams.BlockEncoder(schema, opts);
+  encoder.pipe(fs.createWriteStream(path, {defaultEncoding: 'binary'}));
+  return encoder;
+}
+
+
+module.exports = {
+  Service: services.Service,
+  Type: types.Type,
+  assembleProtocol: specs.assembleProtocol,
+  createFileDecoder: createFileDecoder,
+  createFileEncoder: createFileEncoder,
+  discoverProtocol: services.discoverProtocol,
+  extractFileHeader: extractFileHeader,
+  parse: parse,
+  readProtocol: specs.readProtocol,
+  readSchema: specs.readSchema,
+  streams: containers.streams,
+  types: types.builtins,
+  // Deprecated exports.
+  Protocol: services.Service,
+  assemble: util.deprecate(
+    specs.assembleProtocol,
+    'use `assembleProtocol` instead'
+  ),
+  combine: util.deprecate(
+    types.Type.forTypes,
+    'use `Type.forTypes` intead'
+  ),
+  infer: util.deprecate(
+    types.Type.forValue,
+    'use `Type.forValue` instead'
+  )
+};
+
+
+/***/ }),
 /* 163 */,
 /* 164 */,
 /* 165 */,
@@ -2849,7 +2973,47 @@ module.exports = new type_1.Type('tag:yaml.org,2002:bool', {
 
 /***/ }),
 /* 172 */,
-/* 173 */,
+/* 173 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const { avroToJsonSchema } = __webpack_require__(814);
+
+module.exports.parse = async ({ message, defaultSchemaFormat }) => {
+  const transformed = await avroToJsonSchema(message.payload);
+
+  message['x-parser-original-schema-format'] = message.schemaFormat || defaultSchemaFormat;
+  message['x-parser-original-payload'] = message.payload;
+  message.payload = transformed;
+  delete message.schemaFormat;
+
+  // remove that function when https://github.com/asyncapi/spec/issues/622 will be introduced in AsyncAPI spec
+  async function handleKafkaProtocolKey() {
+    if (message.bindings && message.bindings.kafka) {
+      const key = message.bindings.kafka.key;
+      if (key) {
+        const bindingsTransformed = await avroToJsonSchema(key);
+        message['x-parser-original-bindings-kafka-key'] = key;
+        message.bindings.kafka.key = bindingsTransformed;
+      }
+    }
+  }
+
+  await handleKafkaProtocolKey();
+};
+
+module.exports.getMimeTypes = () => {
+  return [
+    'application/vnd.apache.avro;version=1.9.0',
+    'application/vnd.apache.avro+json;version=1.9.0',
+    'application/vnd.apache.avro+yaml;version=1.9.0',
+    'application/vnd.apache.avro;version=1.8.2',
+    'application/vnd.apache.avro+json;version=1.8.2',
+    'application/vnd.apache.avro+yaml;version=1.8.2'
+  ];
+};
+
+
+/***/ }),
 /* 174 */,
 /* 175 */,
 /* 176 */
@@ -2941,7 +3105,2434 @@ exports.checkBypass = checkBypass;
 /* 179 */,
 /* 180 */,
 /* 181 */,
-/* 182 */,
+/* 182 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+"use strict";
+/* jshint node: true */
+
+// TODO: Add broadcast option to client `_emitMessage`, accessible for one-way
+// messages.
+// TODO: Add `server.mount` method to allow combining servers. The API is as
+// follows: a mounted server's (i.e. the method's argument) handlers have lower
+// precedence than the original server (i.e. `this`); the mounted server's
+// middlewares are only invoked for its handlers.
+// TODO: Change `objectMode` client and server channel option to `encoding`
+// (accepting `'netty'`, `'standard'`, and `null` or `undefined`). Perhaps also
+// expose encoders (API TBD).
+
+
+
+/** This module implements Avro's IPC/RPC logic. */
+
+var types = __webpack_require__(453),
+    utils = __webpack_require__(777),
+    events = __webpack_require__(614),
+    stream = __webpack_require__(794),
+    util = __webpack_require__(669);
+
+
+// A few convenience imports.
+var Tap = utils.Tap;
+var Type = types.Type;
+var debug = util.debuglog('avsc:services');
+var f = util.format;
+
+// Various useful types. We instantiate options once, to share the registry.
+var OPTS = {namespace: 'org.apache.avro.ipc'};
+
+var BOOLEAN_TYPE = Type.forSchema('boolean', OPTS);
+
+var MAP_BYTES_TYPE = Type.forSchema({type: 'map', values: 'bytes'}, OPTS);
+
+var STRING_TYPE = Type.forSchema('string', OPTS);
+
+var HANDSHAKE_REQUEST_TYPE = Type.forSchema({
+  name: 'HandshakeRequest',
+  type: 'record',
+  fields: [
+    {name: 'clientHash', type: {name: 'MD5', type: 'fixed', size: 16}},
+    {name: 'clientProtocol', type: ['null', 'string'], 'default': null},
+    {name: 'serverHash', type: 'MD5'},
+    {name: 'meta', type: ['null', MAP_BYTES_TYPE], 'default': null}
+  ]
+}, OPTS);
+
+var HANDSHAKE_RESPONSE_TYPE = Type.forSchema({
+  name: 'HandshakeResponse',
+  type: 'record',
+  fields: [
+    {
+      name: 'match',
+      type: {
+        name: 'HandshakeMatch',
+        type: 'enum',
+        symbols: ['BOTH', 'CLIENT', 'NONE']
+      }
+    },
+    {name: 'serverProtocol', type: ['null', 'string'], 'default': null},
+    {name: 'serverHash', type: ['null', 'MD5'], 'default': null},
+    {name: 'meta', type: ['null', MAP_BYTES_TYPE], 'default': null}
+  ]
+}, OPTS);
+
+// Prefix used to differentiate between messages when sharing a stream. This
+// length should be smaller than 16. The remainder is used for disambiguating
+// between concurrent messages (the current value, 16, therefore supports ~64k
+// concurrent messages).
+var PREFIX_LENGTH = 16;
+
+// Internal message, used to check protocol compatibility.
+var PING_MESSAGE = new Message(
+  '', // Empty name (invalid for other "normal" messages).
+  Type.forSchema({name: 'PingRequest', type: 'record', fields: []}, OPTS),
+  Type.forSchema(['string'], OPTS),
+  Type.forSchema('null', OPTS)
+);
+
+/** An Avro message, containing its request, response, etc. */
+function Message(name, reqType, errType, resType, oneWay, doc) {
+  this.name = name;
+  if (!Type.isType(reqType, 'record')) {
+    throw new Error('invalid request type');
+  }
+  this.requestType = reqType;
+  if (
+    !Type.isType(errType, 'union') ||
+    !Type.isType(errType.getTypes()[0], 'string')
+  ) {
+    throw new Error('invalid error type');
+  }
+  this.errorType = errType;
+  if (oneWay) {
+    if (!Type.isType(resType, 'null') || errType.getTypes().length > 1) {
+      throw new Error('inapplicable one-way parameter');
+    }
+  }
+  this.responseType = resType;
+  this.oneWay = !!oneWay;
+  this.doc = doc !== undefined ? '' + doc : undefined;
+  Object.freeze(this);
+}
+
+Message.forSchema = function (name, schema, opts) {
+  opts = opts || {};
+  if (!utils.isValidName(name)) {
+    throw new Error(f('invalid message name: %s', name));
+  }
+  // We use a record with a placeholder name here (the user might have set
+  // `noAnonymousTypes`, so we can't use an anonymous one). We remove it from
+  // the registry afterwards to avoid exposing it outside.
+  if (!Array.isArray(schema.request)) {
+    throw new Error(f('invalid message request: %s', name));
+  }
+  var recordName = f('%s.%sRequest', OPTS.namespace, utils.capitalize(name));
+  var reqType = Type.forSchema({
+    name: recordName,
+    type: 'record',
+    namespace: opts.namespace || '', // Don't leak request namespace.
+    fields: schema.request
+  }, opts);
+  delete opts.registry[recordName];
+  if (!schema.response) {
+    throw new Error(f('invalid message response: %s', name));
+  }
+  var resType = Type.forSchema(schema.response, opts);
+  if (schema.errors !== undefined && !Array.isArray(schema.errors)) {
+    throw new Error(f('invalid message errors: %s', name));
+  }
+  var errType = Type.forSchema(['string'].concat(schema.errors || []), opts);
+  var oneWay = !!schema['one-way'];
+  return new Message(name, reqType, errType, resType, oneWay, schema.doc);
+};
+
+Message.prototype.schema = Type.prototype.getSchema;
+
+Message.prototype._attrs = function (opts) {
+  var reqSchema = this.requestType._attrs(opts);
+  var schema = {
+    request: reqSchema.fields,
+    response: this.responseType._attrs(opts)
+  };
+  var msgDoc = this.doc;
+  if (msgDoc !== undefined) {
+    schema.doc = msgDoc;
+  }
+  var errSchema = this.errorType._attrs(opts);
+  if (errSchema.length > 1) {
+    schema.errors = errSchema.slice(1);
+  }
+  if (this.oneWay) {
+    schema['one-way'] = true;
+  }
+  return schema;
+};
+
+// Deprecated.
+
+utils.addDeprecatedGetters(
+  Message,
+  ['name', 'errorType', 'requestType', 'responseType']
+);
+
+Message.prototype.isOneWay = util.deprecate(
+  function () { return this.oneWay; },
+  'use `.oneWay` directly instead of `.isOneWay()`'
+);
+
+/**
+ * An Avro RPC service.
+ *
+ * This constructor shouldn't be called directly, but via the
+ * `Service.forProtocol` method. This function performs little logic to better
+ * support efficient copy.
+ */
+function Service(name, messages, types, ptcl, server) {
+  if (typeof name != 'string') {
+    // Let's be helpful in case this class is instantiated directly.
+    return Service.forProtocol(name, messages);
+  }
+
+  this.name = name;
+  this._messagesByName = messages || {};
+  this.messages = Object.freeze(utils.objectValues(this._messagesByName));
+
+  this._typesByName = types || {};
+  this.types = Object.freeze(utils.objectValues(this._typesByName));
+
+  this.protocol = ptcl;
+  // We cache a string rather than a buffer to not retain an entire slab.
+  this._hashStr = utils.getHash(JSON.stringify(ptcl)).toString('binary');
+  this.doc = ptcl.doc ? '' + ptcl.doc : undefined;
+
+  // We add a server to each protocol for backwards-compatibility (to allow the
+  // use of `protocol.on`). This covers all cases except the use of the
+  // `strictErrors` option, which requires moving to the new API.
+  this._server = server || this.createServer({silent: true});
+  Object.freeze(this);
+}
+
+Service.Client = Client;
+
+Service.Server = Server;
+
+Service.compatible = function (clientSvc, serverSvc) {
+  try {
+    createReaders(clientSvc, serverSvc);
+  } catch (err) {
+    return false;
+  }
+  return true;
+};
+
+Service.forProtocol = function (ptcl, opts) {
+  opts = opts || {};
+
+  var name = ptcl.protocol;
+  if (!name) {
+    throw new Error('missing protocol name');
+  }
+  if (ptcl.namespace !== undefined) {
+    opts.namespace = ptcl.namespace;
+  } else {
+    var match = /^(.*)\.[^.]+$/.exec(name);
+    if (match) {
+      opts.namespace = match[1];
+    }
+  }
+  name = utils.qualify(name, opts.namespace);
+
+  if (ptcl.types) {
+    ptcl.types.forEach(function (obj) { Type.forSchema(obj, opts); });
+  }
+  var msgs;
+  if (ptcl.messages) {
+    msgs = {};
+    Object.keys(ptcl.messages).forEach(function (key) {
+      msgs[key] = Message.forSchema(key, ptcl.messages[key], opts);
+    });
+  }
+
+  return new Service(name, msgs, opts.registry, ptcl);
+};
+
+Service.isService = function (any) {
+  // Not fool-proof but likely sufficient.
+  return !!any && any.hasOwnProperty('_hashStr');
+};
+
+Service.prototype.createClient = function (opts) {
+  var client = new Client(this, opts);
+  process.nextTick(function () {
+    // We delay this processing such that we can attach handlers to the client
+    // before any channels get created.
+    if (opts && opts.server) {
+      // Convenience in-memory client. This can be useful to make requests
+      // relatively efficiently to an in-process server. Note that it is still
+      // is less efficient than direct method calls (because of the
+      // serialization, which does provide "type-safety" though).
+      var obj = {objectMode: true};
+      var pts = [new stream.PassThrough(obj), new stream.PassThrough(obj)];
+      opts.server.createChannel({readable: pts[0], writable: pts[1]}, obj);
+      client.createChannel({readable: pts[1], writable: pts[0]}, obj);
+    } else if (opts && opts.transport) {
+      // Convenience functionality for the common single channel use-case: we
+      // add a single channel using default options to the client.
+      client.createChannel(opts.transport);
+    }
+  });
+  return client;
+};
+
+Service.prototype.createServer = function (opts) {
+  return new Server(this, opts);
+};
+
+Object.defineProperty(Service.prototype, 'hash', {
+  enumerable: true,
+  get: function () { return utils.bufferFrom(this._hashStr, 'binary'); }
+});
+
+Service.prototype.message = function (name) {
+  return this._messagesByName[name];
+};
+
+Service.prototype.type = function (name) {
+  return this._typesByName[name];
+};
+
+Service.prototype.inspect = function () {
+  return f('<Service %j>', this.name);
+};
+
+// Deprecated methods.
+
+utils.addDeprecatedGetters(
+  Service,
+  ['message', 'messages', 'name', 'type', 'types']
+);
+
+Service.prototype.createEmitter = util.deprecate(
+  function (transport, opts) {
+    opts = opts || {};
+    var client = this.createClient({
+      cache: opts.cache,
+      buffering: false,
+      strictTypes: opts.strictErrors,
+      timeout: opts.timeout
+    });
+    var channel = client.createChannel(transport, opts);
+    forwardErrors(client, channel);
+    return channel;
+  },
+  'use `.createClient()` instead of `.createEmitter()`'
+);
+
+Service.prototype.createListener = util.deprecate(
+  function (transport, opts) {
+    if (opts && opts.strictErrors) {
+      throw new Error('use `.createServer()` to support strict errors');
+    }
+    return this._server.createChannel(transport, opts);
+  },
+  'use `.createServer().createChannel()` instead of `.createListener()`'
+);
+
+Service.prototype.emit = util.deprecate(
+  function (name, req, channel, cb) {
+    if (!channel || !this.equals(channel.client._svc$)) {
+      throw new Error('invalid emitter');
+    }
+
+    var client = channel.client;
+    // In case the method is overridden.
+    Client.prototype.emitMessage.call(client, name, req, cb && cb.bind(this));
+    return channel.getPending();
+  },
+  'create a client via `.createClient()` to emit messages instead of `.emit()`'
+);
+
+Service.prototype.equals = util.deprecate(
+  function (any) {
+    return (
+      Service.isService(any) &&
+      this.getFingerprint().equals(any.getFingerprint())
+    );
+  },
+  'equality testing is deprecated, compare the `.protocol`s instead'
+);
+
+Service.prototype.getFingerprint = util.deprecate(
+  function (algorithm) {
+    return utils.getHash(JSON.stringify(this.protocol), algorithm);
+  },
+  'use `.hash` instead of `.getFingerprint()`'
+);
+
+Service.prototype.getSchema = util.deprecate(
+  Type.prototype.getSchema,
+  'use `.protocol` instead of `.getSchema()`'
+);
+
+Service.prototype.on = util.deprecate(
+  function (name, handler) {
+    var self = this; // This protocol.
+    this._server.onMessage(name, function (req, cb) {
+      return handler.call(self, req, this.channel, cb);
+    });
+    return this;
+  },
+  'use `.createServer().onMessage()` instead of `.on()`'
+);
+
+Service.prototype.subprotocol = util.deprecate(
+  function () {
+    var parent = this._server;
+    var opts = {strictTypes: parent._strict, cache: parent._cache};
+    var server = new Server(parent.service, opts);
+    server._handlers = Object.create(parent._handlers);
+    return new Service(
+      this.name,
+      this._messagesByName,
+      this._typesByName,
+      this.protocol,
+      server
+    );
+  },
+  '`.subprotocol()` will be removed in 5.1'
+);
+
+Service.prototype._attrs = function (opts) {
+  var ptcl = {protocol: this.name};
+
+  var types = [];
+  this.types.forEach(function (t) {
+    if (t.getName() === undefined) {
+      // Don't include any unnamed types (e.g. primitives).
+      return;
+    }
+    var typeSchema = t._attrs(opts);
+    if (typeof typeSchema != 'string') {
+      // Some of the named types might already have been defined in a
+      // previous type, in this case we don't include its reference.
+      types.push(typeSchema);
+    }
+  });
+  if (types.length) {
+    ptcl.types = types;
+  }
+
+  var msgNames = Object.keys(this._messagesByName);
+  if (msgNames.length) {
+    ptcl.messages = {};
+    msgNames.forEach(function (name) {
+      ptcl.messages[name] = this._messagesByName[name]._attrs(opts);
+    }, this);
+  }
+
+  if (opts && opts.exportAttrs && this.doc !== undefined) {
+    ptcl.doc = this.doc;
+  }
+  return ptcl;
+};
+
+/** Function to retrieve a remote service's protocol. */
+function discoverProtocol(transport, opts, cb) {
+  if (cb === undefined && typeof opts == 'function') {
+    cb = opts;
+    opts = undefined;
+  }
+
+  var svc = new Service({protocol: 'Empty'}, OPTS);
+  var ptclStr;
+  svc.createClient({timeout: opts && opts.timeout})
+    .createChannel(transport, {
+      scope: opts && opts.scope,
+      endWritable: typeof transport == 'function' // Stateless transports only.
+    }).once('handshake', function (hreq, hres) {
+        ptclStr = hres.serverProtocol;
+        this.destroy(true);
+      })
+      .once('eot', function (pending, err) {
+        // Stateless transports will throw an interrupted error when the
+        // channel is destroyed, we ignore it here.
+        if (err && !/interrupted/.test(err)) {
+          cb(err); // Likely timeout.
+        } else {
+          cb(null, JSON.parse(ptclStr));
+        }
+      });
+}
+
+/** Load-balanced message sender. */
+function Client(svc, opts) {
+  opts = opts || {};
+  events.EventEmitter.call(this);
+
+  // We have to suffix all client properties to be safe, since the message
+  // names aren't prefixed with clients (unlike servers).
+  this._svc$ = svc;
+  this._channels$ = []; // Active channels.
+  this._fns$ = []; // Middleware functions.
+
+  this._buffering$ = !!opts.buffering;
+  this._cache$ = opts.cache || {}; // For backwards compatibility.
+  this._policy$ = opts.channelPolicy;
+  this._strict$ = !!opts.strictTypes;
+  this._timeout$ = utils.getOption(opts, 'timeout', 10000);
+
+  if (opts.remoteProtocols) {
+    insertRemoteProtocols(this._cache$, opts.remoteProtocols, svc, true);
+  }
+
+  this._svc$.messages.forEach(function (msg) {
+    this[msg.name] = this._createMessageHandler$(msg);
+  }, this);
+}
+util.inherits(Client, events.EventEmitter);
+
+Client.prototype.activeChannels = function () {
+  return this._channels$.slice();
+};
+
+Client.prototype.createChannel = function (transport, opts) {
+  var objectMode = opts && opts.objectMode;
+  var channel;
+  if (typeof transport == 'function') {
+    var writableFactory;
+    if (objectMode) {
+      writableFactory = transport;
+    } else {
+      // We provide a default standard-compliant codec. This should support
+      // most use-cases (for example when speaking to the official Java and
+      // Python implementations over HTTP, or when this library is used for
+      // both the emitting and listening sides).
+      writableFactory = function (cb) {
+        var encoder = new FrameEncoder();
+        var writable = transport(function (err, readable) {
+          if (err) {
+            cb(err);
+            return;
+          }
+          // Since the decoder isn't exposed (so can't have an error handler
+          // attached, we forward any errors to the client). Since errors would
+          // only get thrown when the decoder flushes (if there is trailing
+          // data), at which point the source will have ended, there is no need
+          // to add re-piping logic (destination errors trigger an unpipe).
+          var decoder = new FrameDecoder()
+            .once('error', function (err) { channel.destroy(err); });
+          cb(null, readable.pipe(decoder));
+        });
+        if (writable) {
+          encoder.pipe(writable);
+          return encoder;
+        }
+      };
+    }
+    channel = new StatelessClientChannel(this, writableFactory, opts);
+  } else {
+    var readable, writable;
+    if (isStream(transport)) {
+      readable = writable = transport;
+    } else {
+      readable = transport.readable;
+      writable = transport.writable;
+    }
+    if (!objectMode) {
+      // To ease communication with Java servers, we provide a default codec
+      // compatible with Java servers' `NettyTransportCodec`'s implementation.
+      var decoder = new NettyDecoder();
+      readable = readable.pipe(decoder);
+      var encoder = new NettyEncoder();
+      encoder.pipe(writable);
+      writable = encoder;
+    }
+    channel = new StatefulClientChannel(this, readable, writable, opts);
+    if (!objectMode) {
+      // Since we never expose the automatically created encoder and decoder,
+      // we release them ourselves here when the channel ends. (Unlike for
+      // stateless channels, it is conceivable for the underlying stream to be
+      // reused afterwards).
+      channel.once('eot', function () {
+        readable.unpipe(decoder);
+        encoder.unpipe(writable);
+      });
+      // We also forward any (trailing data) error.
+      decoder.once('error', function (err) { channel.destroy(err); });
+    }
+  }
+  var channels = this._channels$;
+  channels.push(channel);
+  channel.once('_drain', function () {
+    // Remove the channel from the list of active ones.
+    channels.splice(channels.indexOf(this), 1);
+  });
+  // We restrict buffering to startup, otherwise we risk silently hiding errors
+  // (especially since channel timeouts don't apply yet).
+  this._buffering$ = false;
+  this.emit('channel', channel);
+  return channel;
+};
+
+Client.prototype.destroyChannels = function (opts) {
+  this._channels$.forEach(function (channel) {
+    channel.destroy(opts && opts.noWait);
+  });
+};
+
+Client.prototype.emitMessage = function (name, req, opts, cb) {
+  var msg = getExistingMessage(this._svc$, name);
+  var wreq = new WrappedRequest(msg, {}, req);
+  this._emitMessage$(wreq, opts, cb);
+};
+
+Client.prototype.remoteProtocols = function () {
+  return getRemoteProtocols(this._cache$, true);
+};
+
+Object.defineProperty(Client.prototype, 'service', {
+  enumerable: true,
+  get: function () { return this._svc$; }
+});
+
+Client.prototype.use = function (/* fn ... */) {
+  var i, l, fn;
+  for (i = 0, l = arguments.length; i < l; i++) {
+    fn = arguments[i];
+    this._fns$.push(fn.length < 3 ? fn(this) : fn);
+  }
+  return this;
+};
+
+Client.prototype._emitMessage$ = function (wreq, opts, cb) {
+  // Common logic between `client.emitMessage` and the "named" message methods.
+  if (!cb && typeof opts === 'function') {
+    cb = opts;
+    opts = undefined;
+  }
+  var self = this;
+  var channels = this._channels$;
+  var numChannels = channels.length;
+  if (!numChannels) {
+    if (this._buffering$) {
+      debug('no active client channels, buffering call');
+      this.once('channel', function () {
+        this._emitMessage$(wreq, opts, cb);
+      });
+    } else {
+      var err = new Error('no active channels');
+      process.nextTick(function () {
+        if (cb) {
+          cb.call(new CallContext(wreq._msg), err);
+        } else {
+          self.emit('error', err);
+        }
+      });
+    }
+    return;
+  }
+
+  opts = opts || {};
+  if (opts.timeout === undefined) {
+    opts.timeout = this._timeout$;
+  }
+
+  var channel;
+  if (numChannels === 1) {
+    // Common case, optimized away.
+    channel = channels[0];
+  } else if (this._policy$) {
+    channel = this._policy$(this._channels$.slice());
+    if (!channel) {
+      debug('policy returned no channel, skipping call');
+      return;
+    }
+  } else {
+    // Random selection, cheap and likely good enough for most use-cases.
+    channel = channels[Math.floor(Math.random() * numChannels)];
+  }
+
+  channel._emit(wreq, opts, function (err, wres) {
+    var ctx = this; // Call context.
+    var errType = ctx.message.errorType;
+    if (err) {
+      // System error, likely the message wasn't sent (or an error occurred
+      // while decoding the response).
+      if (self._strict$) {
+        err = errType.clone(err.message, {wrapUnions: true});
+      }
+      done(err);
+      return;
+    }
+    if (!wres) {
+      // This is a one way message.
+      done();
+      return;
+    }
+    // Message transmission succeeded, we transmit the message data; massaging
+    // any error strings into actual `Error` objects in non-strict mode.
+    err = wres.error;
+    if (!self._strict$) {
+      // Try to coerce an eventual error into more idiomatic JavaScript types:
+      // `undefined` becomes `null` and a remote string "system" error is
+      // wrapped inside an actual `Error` object.
+      if (err === undefined) {
+        err = null;
+      } else {
+        if (Type.isType(errType, 'union:unwrapped')) {
+          if (typeof err == 'string') {
+            err = new Error(err);
+          }
+        } else if (err && err.string && typeof err.string == 'string') {
+          err = new Error(err.string);
+        }
+      }
+    }
+    done(err, wres.response);
+
+    function done(err, res) {
+      if (cb) {
+        cb.call(ctx, err, res);
+      } else if (err) {
+        self.emit('error', err);
+      }
+    }
+  });
+};
+
+Client.prototype._createMessageHandler$ = function (msg) {
+  // jshint -W054
+  var fields = msg.requestType.getFields();
+  var names = fields.map(function (f) { return f.getName(); });
+  var body = 'return function ' + msg.name + '(';
+  if (names.length) {
+    body += names.join(', ') + ', ';
+  }
+  body += 'opts, cb) {\n';
+  body += '  var req = {';
+  body += names.map(function (n) { return n + ': ' + n; }).join(', ');
+  body += '};\n';
+  body += '  return this.emitMessage(\'' + msg.name + '\', req, opts, cb);\n';
+  body += '};';
+  return (new Function(body))();
+};
+
+/** Message receiver. */
+function Server(svc, opts) {
+  opts = opts || {};
+  events.EventEmitter.call(this);
+
+  this.service = svc;
+  this._handlers = {};
+  this._fns = []; // Middleware functions.
+  this._channels = {}; // Active channels.
+  this._nextChannelId = 1;
+
+  this._cache = opts.cache || {}; // Deprecated.
+  this._defaultHandler = opts.defaultHandler;
+  this._sysErrFormatter = opts.systemErrorFormatter;
+  this._silent = !!opts.silent;
+  this._strict = !!opts.strictTypes;
+
+  if (opts.remoteProtocols) {
+    insertRemoteProtocols(this._cache, opts.remoteProtocols, svc, false);
+  }
+
+  svc.messages.forEach(function (msg) {
+    var name = msg.name;
+    if (!opts.noCapitalize) {
+      name = utils.capitalize(name);
+    }
+    this['on' + name] = this._createMessageHandler(msg);
+  }, this);
+}
+util.inherits(Server, events.EventEmitter);
+
+Server.prototype.activeChannels = function () {
+  return utils.objectValues(this._channels);
+};
+
+Server.prototype.createChannel = function (transport, opts) {
+  var objectMode = opts && opts.objectMode;
+  var channel;
+  if (typeof transport == 'function') {
+    var readableFactory;
+    if (objectMode) {
+      readableFactory = transport;
+    } else {
+      readableFactory = function (cb) {
+        var decoder = new FrameDecoder()
+          .once('error', function (err) { channel.destroy(err); });
+        return transport(function (err, writable) {
+          if (err) {
+            cb(err);
+            return;
+          }
+          var encoder = new FrameEncoder();
+          encoder.pipe(writable);
+          cb(null, encoder);
+        }).pipe(decoder);
+      };
+    }
+    channel = new StatelessServerChannel(this, readableFactory, opts);
+  } else {
+    var readable, writable;
+    if (isStream(transport)) {
+      readable = writable = transport;
+    } else {
+      readable = transport.readable;
+      writable = transport.writable;
+    }
+    if (!objectMode) {
+      var decoder = new NettyDecoder();
+      readable = readable.pipe(decoder);
+      var encoder = new NettyEncoder();
+      encoder.pipe(writable);
+      writable = encoder;
+    }
+    channel = new StatefulServerChannel(this, readable, writable, opts);
+    if (!objectMode) {
+      // Similar to client channels, since we never expose the encoder and
+      // decoder, we must release them ourselves here.
+      channel.once('eot', function () {
+        readable.unpipe(decoder);
+        encoder.unpipe(writable);
+      });
+      decoder.once('error', function (err) { channel.destroy(err); });
+    }
+  }
+
+  if (!this.listeners('error').length) {
+    this.on('error', this._onError);
+  }
+  var channelId = this._nextChannelId++;
+  var channels = this._channels;
+  channels[channelId] = channel
+    .once('eot', function () { delete channels[channelId]; });
+  this.emit('channel', channel);
+  return channel;
+};
+
+Server.prototype.onMessage = function (name, handler) {
+  getExistingMessage(this.service, name); // Check message existence.
+  this._handlers[name] = handler;
+  return this;
+};
+
+Server.prototype.remoteProtocols = function () {
+  return getRemoteProtocols(this._cache, false);
+};
+
+Server.prototype.use = function (/* fn ... */) {
+  var i, l, fn;
+  for (i = 0, l = arguments.length; i < l; i++) {
+    fn = arguments[i];
+    this._fns.push(fn.length < 3 ? fn(this) : fn);
+  }
+  return this;
+};
+
+Server.prototype._createMessageHandler = function (msg) {
+  // jshint -W054
+  var name = msg.name;
+  var fields = msg.requestType.fields;
+  var numArgs = fields.length;
+  var args = fields.length ?
+    ', ' + fields.map(function (f) { return 'req.' + f.name; }).join(', ') :
+    '';
+  // We are careful to not lose the initial handler's number of arguments (or
+  // more specifically whether it would have access to the callback or not).
+  // This is useful to implement "smart promisification" logic downstream.
+  var body = 'return function (handler) {\n';
+  body += '  if (handler.length > ' + numArgs + ') {\n';
+  body += '    return this.onMessage(\'' + name + '\', function (req, cb) {\n';
+  body += '      return handler.call(this' + args + ', cb);\n';
+  body += '    });\n';
+  body += '  } else {\n';
+  body += '    return this.onMessage(\'' + name + '\', function (req) {\n';
+  body += '      return handler.call(this' + args + ');\n';
+  body += '    });\n';
+  body += '  }\n';
+  body += '};\n';
+  return (new Function(body))();
+};
+
+Server.prototype._onError = function (err) {
+  /* istanbul ignore if */
+  if (!this._silent && err.rpcCode !== 'UNKNOWN_PROTOCOL') {
+    console.error();
+    if (err.rpcCode) {
+      console.error(err.rpcCode);
+      console.error(err.cause);
+    } else {
+      console.error('INTERNAL_SERVER_ERROR');
+      console.error(err);
+    }
+  }
+};
+
+/** Base message emitter class. See below for the two available variants. */
+function ClientChannel(client, opts) {
+  opts = opts || {};
+  events.EventEmitter.call(this);
+
+  this.client = client;
+  this.timeout = utils.getOption(opts, 'timeout', client._timeout$);
+  this._endWritable = !!utils.getOption(opts, 'endWritable', true);
+  this._prefix = normalizedPrefix(opts.scope);
+
+  var cache = client._cache$;
+  var clientSvc = client._svc$;
+  var hash = opts.serverHash;
+  if (!hash) {
+    hash = clientSvc.hash;
+  }
+  var adapter = cache[hash];
+  if (!adapter) {
+    // This might happen even if the server hash option was set if the cache
+    // doesn't contain the corresponding adapter. In this case we fall back to
+    // the client's protocol (as mandated by the spec).
+    hash = clientSvc.hash;
+    adapter = cache[hash] = new Adapter(clientSvc, clientSvc, hash);
+  }
+  this._adapter = adapter;
+
+  this._registry = new Registry(this, PREFIX_LENGTH);
+  this.pending = 0;
+  this.destroyed = false;
+  this.draining = false;
+  this.once('_eot', function (pending, err) {
+    // Since this listener is only run once, we will only forward an error if
+    // it is present during the initial `destroy` call, which is OK.
+    debug('client channel EOT');
+    this.destroyed = true;
+    this.emit('eot', pending, err);
+  });
+}
+util.inherits(ClientChannel, events.EventEmitter);
+
+ClientChannel.prototype.destroy = function (noWait) {
+  debug('destroying client channel');
+  if (!this.draining) {
+    this.draining = true;
+    this.emit('_drain');
+  }
+  var registry = this._registry;
+  var pending = this.pending;
+  if (noWait) {
+    registry.clear();
+  }
+  if (noWait || !pending) {
+    if (isError(noWait)) {
+      debug('fatal client channel error: %s', noWait);
+      this.emit('_eot', pending, noWait);
+    } else {
+      this.emit('_eot', pending);
+    }
+  } else {
+    debug('client channel entering drain mode (%s pending)', pending);
+  }
+};
+
+ClientChannel.prototype.ping = function (timeout, cb) {
+  if (!cb && typeof timeout == 'function') {
+    cb = timeout;
+    timeout = undefined;
+  }
+  var self = this;
+  var wreq = new WrappedRequest(PING_MESSAGE);
+  this._emit(wreq, {timeout: timeout}, function (err) {
+    if (cb) {
+      cb.call(self, err);
+    } else if (err) {
+      self.destroy(err);
+    }
+  });
+};
+
+ClientChannel.prototype._createHandshakeRequest = function (adapter, noSvc) {
+  var svc = this.client._svc$;
+  return {
+    clientHash: svc.hash,
+    clientProtocol: noSvc ? null : JSON.stringify(svc.protocol),
+    serverHash: adapter._hash
+  };
+};
+
+ClientChannel.prototype._emit = function (wreq, opts, cb) {
+  var msg = wreq._msg;
+  var wres = msg.oneWay ? undefined : new WrappedResponse(msg, {});
+  var ctx = new CallContext(msg, this);
+  var self = this;
+  this.pending++;
+  process.nextTick(function () {
+    if (!msg.name) {
+      // Ping request, bypass middleware.
+      onTransition(wreq, wres, onCompletion);
+    } else {
+      self.emit('outgoingCall', ctx, opts);
+      var fns = self.client._fns$;
+      debug('starting client middleware chain (%s middleware)', fns.length);
+      chainMiddleware({
+        fns: fns,
+        ctx: ctx,
+        wreq: wreq,
+        wres: wres,
+        onTransition: onTransition,
+        onCompletion: onCompletion,
+        onError: onError
+      });
+    }
+  });
+
+  function onTransition(wreq, wres, prev) {
+    // Serialize the message.
+    var err, reqBuf;
+    if (self.destroyed) {
+      err = new Error('channel destroyed');
+    } else {
+      try {
+        reqBuf = wreq.toBuffer();
+      } catch (cause) {
+        err = serializationError(
+          f('invalid %j request', msg.name),
+          wreq,
+          [
+            {name: 'headers', type: MAP_BYTES_TYPE},
+            {name: 'request', type: msg.requestType}
+          ]
+        );
+      }
+    }
+    if (err) {
+      prev(err);
+      return;
+    }
+
+    // Generate the response callback.
+    var timeout = (opts && opts.timeout !== undefined) ?
+      opts.timeout :
+      self.timeout;
+    var id = self._registry.add(timeout, function (err, resBuf, adapter) {
+      if (!err && !msg.oneWay) {
+        try {
+          adapter._decodeResponse(resBuf, wres, msg);
+        } catch (cause) {
+          err = cause;
+        }
+      }
+      prev(err);
+    });
+    id |= self._prefix;
+
+    debug('sending message %s', id);
+    self._send(id, reqBuf, !!msg && msg.oneWay);
+  }
+
+  function onCompletion(err) {
+    self.pending--;
+    cb.call(ctx, err, wres);
+    if (self.draining && !self.destroyed && !self.pending) {
+      self.destroy();
+    }
+  }
+
+  function onError(err) {
+    // This will happen if a middleware callback is called multiple times. We
+    // forward the error to the client rather than emit it on the channel since
+    // middleware are a client-level abstraction, so better handled there.
+    self.client.emit('error', err, self);
+  }
+};
+
+ClientChannel.prototype._getAdapter = function (hres) {
+  var hash = hres.serverHash;
+  var cache = this.client._cache$;
+  var adapter = cache[hash];
+  if (adapter) {
+    return adapter;
+  }
+  var ptcl = JSON.parse(hres.serverProtocol);
+  var serverSvc = Service.forProtocol(ptcl);
+  adapter = new Adapter(this.client._svc$, serverSvc, hash, true);
+  return cache[hash] = adapter;
+};
+
+ClientChannel.prototype._matchesPrefix = function (id) {
+  return matchesPrefix(id, this._prefix);
+};
+
+ClientChannel.prototype._send = utils.abstractFunction;
+
+// Deprecated.
+
+utils.addDeprecatedGetters(ClientChannel, ['pending', 'timeout']);
+
+ClientChannel.prototype.getCache = util.deprecate(
+  function () { return this.client._cache$; },
+  'use `.remoteProtocols()` instead of `.getCache()`'
+);
+
+ClientChannel.prototype.getProtocol = util.deprecate(
+  function () {
+    return this.client._svc$;
+  },
+  'use `.service` instead or `.getProtocol()`'
+);
+
+ClientChannel.prototype.isDestroyed = util.deprecate(
+  function () { return this.destroyed; },
+  'use `.destroyed` instead of `.isDestroyed`'
+);
+
+/**
+ * Factory-based client channel.
+ *
+ * This channel doesn't keep a persistent connection to the server and requires
+ * prepending a handshake to each message emitted. Usage examples include
+ * talking to an HTTP server (where the factory returns an HTTP request).
+ *
+ * Since each message will use its own writable/readable stream pair, the
+ * advantage of this channel is that it is able to keep track of which response
+ * corresponds to each request without relying on transport ordering. In
+ * particular, this means these channels are compatible with any server
+ * implementation.
+ */
+function StatelessClientChannel(client, writableFactory, opts) {
+  ClientChannel.call(this, client, opts);
+  this._writableFactory = writableFactory;
+
+  if (!opts || !opts.noPing) {
+    // Ping the server to check whether the remote protocol is compatible.
+    // If not, this will throw an error on the channel.
+    debug('emitting ping request');
+    this.ping();
+  }
+}
+util.inherits(StatelessClientChannel, ClientChannel);
+
+StatelessClientChannel.prototype._send = function (id, reqBuf) {
+  var cb = this._registry.get(id);
+  var adapter = this._adapter;
+  var self = this;
+  process.nextTick(emit);
+  return true;
+
+  function emit(retry) {
+    if (self.destroyed) {
+      // The request's callback will already have been called.
+      return;
+    }
+
+    var hreq = self._createHandshakeRequest(adapter, !retry);
+
+    var writable = self._writableFactory.call(self, function (err, readable) {
+      if (err) {
+        cb(err);
+        return;
+      }
+      readable.on('data', function (obj) {
+        debug('received response %s', obj.id);
+        // We don't check that the prefix matches since the ID likely hasn't
+        // been propagated to the response (see default stateless codec).
+        var buf = Buffer.concat(obj.payload);
+        try {
+          var parts = readHead(HANDSHAKE_RESPONSE_TYPE, buf);
+          var hres = parts.head;
+          if (hres.serverHash) {
+            adapter = self._getAdapter(hres);
+          }
+        } catch (cause) {
+          cb(cause);
+          return;
+        }
+        var match = hres.match;
+        debug('handshake match: %s', match);
+        self.emit('handshake', hreq, hres);
+        if (match === 'NONE') {
+          // Try again, including the full protocol this time.
+          process.nextTick(function() { emit(true); });
+        } else {
+          // Change the default adapter.
+          self._adapter = adapter;
+          cb(null, parts.tail, adapter);
+        }
+      });
+    });
+    if (!writable) {
+      cb(new Error('invalid writable stream'));
+      return;
+    }
+    writable.write({
+      id: id,
+      payload: [HANDSHAKE_REQUEST_TYPE.toBuffer(hreq), reqBuf]
+    });
+    if (self._endWritable) {
+      writable.end();
+    }
+  }
+};
+
+/**
+ * Multiplexing client channel.
+ *
+ * These channels reuse the same streams (both readable and writable) for all
+ * messages. This avoids a lot of overhead (e.g. creating new connections,
+ * re-issuing handshakes) but requires the underlying transport to support
+ * forwarding message IDs.
+ */
+function StatefulClientChannel(client, readable, writable, opts) {
+  ClientChannel.call(this, client, opts);
+  this._readable = readable;
+  this._writable = writable;
+  this._connected = !!(opts && opts.noPing);
+  this._readable.on('end', onEnd);
+  this._writable.on('finish', onFinish);
+
+  var self = this;
+  var timer = null;
+  this.once('eot', function () {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (!self._connected) {
+      // Clear any buffered calls (they are guaranteed to error out when
+      // reaching the transition phase).
+      self.emit('_ready');
+    }
+    // Remove references to this channel to avoid potential memory leaks.
+    this._writable.removeListener('finish', onFinish);
+    if (this._endWritable) {
+      debug('ending transport');
+      this._writable.end();
+    }
+    this._readable
+      .removeListener('data', onPing)
+      .removeListener('data', onMessage)
+      .removeListener('end', onEnd);
+  });
+
+  var hreq; // For handshake events.
+  if (this._connected) {
+    this._readable.on('data', onMessage);
+  } else {
+    this._readable.on('data', onPing);
+    process.nextTick(ping);
+    if (self.timeout) {
+      timer = setTimeout(function () {
+        self.destroy(new Error('timeout'));
+      }, self.timeout);
+    }
+  }
+
+  function ping(retry) {
+    if (self.destroyed) {
+      return;
+    }
+    hreq = self._createHandshakeRequest(self._adapter, !retry);
+    var payload = [
+      HANDSHAKE_REQUEST_TYPE.toBuffer(hreq),
+      utils.bufferFrom([0, 0]) // No header, no data (empty message name).
+    ];
+    // We can use a static ID here since we are guaranteed that this message is
+    // the only one on the channel (for this scope at least).
+    self._writable.write({id: self._prefix, payload: payload});
+  }
+
+  function onPing(obj) {
+    if (!self._matchesPrefix(obj.id)) {
+      debug('discarding unscoped response %s (still connecting)', obj.id);
+      return;
+    }
+    var buf = Buffer.concat(obj.payload);
+    try {
+      var hres = readHead(HANDSHAKE_RESPONSE_TYPE, buf).head;
+      if (hres.serverHash) {
+        self._adapter = self._getAdapter(hres);
+      }
+    } catch (cause) {
+      // This isn't a recoverable error.
+      self.destroy(cause);
+      return;
+    }
+    var match = hres.match;
+    debug('handshake match: %s', match);
+    self.emit('handshake', hreq, hres);
+    if (match === 'NONE') {
+      process.nextTick(function () { ping(true); });
+    } else {
+      debug('successfully connected');
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      self._readable.removeListener('data', onPing).on('data', onMessage);
+      self._connected = true;
+      self.emit('_ready');
+      hreq = null; // Release reference.
+    }
+  }
+
+  // Callback used after a connection has been established.
+  function onMessage(obj) {
+    var id = obj.id;
+    if (!self._matchesPrefix(id)) {
+      debug('discarding unscoped message %s', id);
+      return;
+    }
+    var cb = self._registry.get(id);
+    if (cb) {
+      process.nextTick(function () {
+        debug('received message %s', id);
+        // Ensure that the initial callback gets called asynchronously, even
+        // for completely synchronous transports (otherwise the number of
+        // pending requests will sometimes be inconsistent between stateful and
+        // stateless transports).
+        cb(null, Buffer.concat(obj.payload), self._adapter);
+      });
+    }
+  }
+
+  function onEnd() { self.destroy(true); }
+  function onFinish() { self.destroy(); }
+}
+util.inherits(StatefulClientChannel, ClientChannel);
+
+StatefulClientChannel.prototype._emit = function () {
+  // Override this method to allow calling `_emit` even before the channel is
+  // connected. Note that we don't perform this logic in `_send` since we want
+  // to guarantee that `'handshake'` events are emitted before any
+  // `'outgoingCall'` events.
+  if (this._connected || this.draining) {
+    ClientChannel.prototype._emit.apply(this, arguments);
+  } else {
+    debug('queuing request');
+    var args = [];
+    var i, l;
+    for (i = 0, l = arguments.length; i < l; i++) {
+      args.push(arguments[i]);
+    }
+    this.once('_ready', function () { this._emit.apply(this, args); });
+  }
+};
+
+StatefulClientChannel.prototype._send = function (id, reqBuf, oneWay) {
+  if (oneWay) {
+    var self = this;
+    // Clear the callback, passing in an empty header.
+    process.nextTick(function () {
+      self._registry.get(id)(null, utils.bufferFrom([0, 0, 0]), self._adapter);
+    });
+  }
+  return this._writable.write({id: id, payload: [reqBuf]});
+};
+
+/** The server-side emitter equivalent. */
+function ServerChannel(server, opts) {
+  opts = opts || {};
+  events.EventEmitter.call(this);
+
+  this.server = server;
+  this._endWritable = !!utils.getOption(opts, 'endWritable', true);
+  this._prefix = normalizedPrefix(opts.scope);
+
+  var cache = server._cache;
+  var svc = server.service;
+  var hash = svc.hash;
+  if (!cache[hash]) {
+    // Add the channel's protocol to the cache if it isn't already there. This
+    // will save a handshake the first time on channels with the same protocol.
+    cache[hash] = new Adapter(svc, svc, hash);
+  }
+  this._adapter = null;
+
+  this.destroyed = false;
+  this.draining = false;
+  this.pending = 0;
+  this.once('_eot', function (pending, err) {
+    debug('server channel EOT');
+    this.emit('eot', pending, err);
+  });
+}
+util.inherits(ServerChannel, events.EventEmitter);
+
+ServerChannel.prototype.destroy = function (noWait) {
+  if (!this.draining) {
+    this.draining = true;
+    this.emit('_drain');
+  }
+  if (noWait || !this.pending) {
+    this.destroyed = true;
+    if (isError(noWait)) {
+      debug('fatal server channel error: %s', noWait);
+      this.emit('_eot', this.pending, noWait);
+    } else {
+      this.emit('_eot', this.pending);
+    }
+  }
+};
+
+ServerChannel.prototype._createHandshakeResponse = function (err, hreq) {
+  var svc = this.server.service;
+  var buf = svc.hash;
+  var serverMatch = hreq && hreq.serverHash.equals(buf);
+  return {
+    match: err ? 'NONE' : (serverMatch ? 'BOTH' : 'CLIENT'),
+    serverProtocol: serverMatch ? null : JSON.stringify(svc.protocol),
+    serverHash: serverMatch ? null : buf
+  };
+};
+
+ServerChannel.prototype._getAdapter = function (hreq) {
+  var hash = hreq.clientHash;
+  var adapter = this.server._cache[hash];
+  if (adapter) {
+    return adapter;
+  }
+  if (!hreq.clientProtocol) {
+    throw toRpcError('UNKNOWN_PROTOCOL');
+  }
+  var ptcl = JSON.parse(hreq.clientProtocol);
+  var clientSvc = Service.forProtocol(ptcl);
+  adapter = new Adapter(clientSvc, this.server.service, hash, true);
+  return this.server._cache[hash] = adapter;
+};
+
+ServerChannel.prototype._matchesPrefix = function (id) {
+  return matchesPrefix(id, this._prefix);
+};
+
+ServerChannel.prototype._receive = function (reqBuf, adapter, cb) {
+  var self = this;
+  var wreq;
+  try {
+    wreq = adapter._decodeRequest(reqBuf);
+  } catch (cause) {
+    cb(self._encodeSystemError(toRpcError('INVALID_REQUEST', cause)));
+    return;
+  }
+
+  var msg = wreq._msg;
+  var wres = new WrappedResponse(msg, {});
+  if (!msg.name) {
+    // Ping message, we don't invoke middleware logic in this case.
+    wres.response = null;
+    cb(wres.toBuffer(), false);
+    return;
+  }
+
+  var ctx = new CallContext(msg, this);
+  self.emit('incomingCall', ctx);
+  var fns = this.server._fns;
+  debug('starting server middleware chain (%s middleware)', fns.length);
+  self.pending++;
+  chainMiddleware({
+    fns: fns,
+    ctx: ctx,
+    wreq: wreq,
+    wres: wres,
+    onTransition: onTransition,
+    onCompletion: onCompletion,
+    onError: onError
+  });
+
+  function onTransition(wreq, wres, prev) {
+    var handler = self.server._handlers[msg.name];
+    if (!handler) {
+      // The underlying service hasn't implemented a handler.
+      var defaultHandler = self.server._defaultHandler;
+      if (defaultHandler) {
+        // We call the default handler with arguments similar (slightly
+        // simpler, there are no phases here) to middleware such that it can
+        // easily access the message name (useful to implement proxies).
+        defaultHandler.call(ctx, wreq, wres, prev);
+      } else {
+        var cause = new Error(f('no handler for %s', msg.name));
+        prev(toRpcError('NOT_IMPLEMENTED', cause));
+      }
+    } else {
+      var pending = !msg.oneWay;
+      try {
+        if (pending) {
+          handler.call(ctx, wreq.request, function (err, res) {
+            pending = false;
+            wres.error = err;
+            wres.response = res;
+            prev();
+          });
+        } else {
+          handler.call(ctx, wreq.request);
+          prev();
+        }
+      } catch (err) {
+        // We catch synchronous failures (same as express) and return the
+        // failure. Note that the server process can still crash if an error
+        // is thrown after the handler returns but before the response is
+        // sent (again, same as express). We are careful to only trigger the
+        // response callback once, emitting the errors afterwards instead.
+        if (pending) {
+          pending = false;
+          prev(err);
+        } else {
+          onError(err);
+        }
+      }
+    }
+  }
+
+  function onCompletion(err) {
+    self.pending--;
+    var server = self.server;
+    var resBuf;
+    if (!err) {
+      var resErr = wres.error;
+      var isStrict = server._strict;
+      if (!isStrict) {
+        if (isError(resErr)) {
+          // If the error type is wrapped, we must wrap the error too.
+          wres.error = msg.errorType.clone(resErr.message, {wrapUnions: true});
+        } else if (resErr === null) {
+          // We also allow `null`'s as error in this mode, converting them to
+          // the Avro-compatible `undefined`.
+          resErr = wres.error = undefined;
+        }
+        if (
+          resErr === undefined &&
+          wres.response === undefined &&
+          msg.responseType.isValid(null)
+        ) {
+          // Finally, for messages with `null` as acceptable response type, we
+          // allow `undefined`; converting them to `null`. This allows users to
+          // write a more natural `cb()` instead of `cb(null, null)`.
+          wres.response = null;
+        }
+      }
+      try {
+        resBuf = wres.toBuffer();
+      } catch (cause) {
+        // Note that we don't add an RPC code here such that the client
+        // receives the default `INTERNAL_SERVER_ERROR` one.
+        if (wres.error !== undefined) {
+          err = serializationError(
+            f('invalid %j error', msg.name), // Sic.
+            wres,
+            [
+              {name: 'headers', type: MAP_BYTES_TYPE},
+              {name: 'error', type: msg.errorType}
+            ]
+          );
+        } else {
+          err = serializationError(
+            f('invalid %j response', msg.name),
+            wres,
+            [
+              {name: 'headers', type: MAP_BYTES_TYPE},
+              {name: 'response', type: msg.responseType}
+            ]
+          );
+        }
+      }
+    }
+    if (!resBuf) {
+      // The headers are only available if the message isn't one-way.
+      resBuf = self._encodeSystemError(err, wres.headers);
+    } else if (resErr !== undefined) {
+      server.emit('error', toRpcError('APPLICATION_ERROR', resErr));
+    }
+    cb(resBuf, msg.oneWay);
+    if (self.draining && !self.pending) {
+      self.destroy();
+    }
+  }
+
+  function onError(err) {
+    // Similar to the client equivalent, we redirect this error to the server
+    // since middleware are defined at server-level.
+    self.server.emit('error', err, self);
+  }
+};
+
+// Deprecated.
+
+utils.addDeprecatedGetters(ServerChannel, ['pending']);
+
+ServerChannel.prototype.getCache = util.deprecate(
+  function () { return this.server._cache; },
+  'use `.remoteProtocols()` instead of `.getCache()`'
+);
+
+ServerChannel.prototype.getProtocol = util.deprecate(
+  function () {
+    return this.server.service;
+  },
+  'use `.service` instead of `.getProtocol()`'
+);
+
+ServerChannel.prototype.isDestroyed = util.deprecate(
+  function () { return this.destroyed; },
+  'use `.destroyed` instead of `.isDestroyed`'
+);
+
+/**
+ * Encode an error and optional header into a valid Avro response.
+ *
+ * @param err {Error} Error to encode.
+ * @param header {Object} Optional response header.
+ */
+ServerChannel.prototype._encodeSystemError = function (err, header) {
+  var server = this.server;
+  server.emit('error', err, this);
+  var errStr;
+  if (server._sysErrFormatter) {
+    // Format the error into a string to send over the wire.
+    errStr = server._sysErrFormatter.call(this, err);
+  } else if (err.rpcCode) {
+    // By default, only forward the error's message when the RPC code is set
+    // (i.e. when this isn't an internal server error).
+    errStr = err.message;
+  }
+  var hdrBuf;
+  if (header) {
+    try {
+      // Propagate the header if possible.
+      hdrBuf = MAP_BYTES_TYPE.toBuffer(header);
+    } catch (cause) {
+      server.emit('error', cause, this);
+    }
+  }
+  return Buffer.concat([
+    hdrBuf || utils.bufferFrom([0]),
+    utils.bufferFrom([1, 0]), // Error flag and first union index.
+    STRING_TYPE.toBuffer(errStr || 'internal server error')
+  ]);
+};
+
+/**
+ * Server channel for stateless transport.
+ *
+ * This channel expect a handshake to precede each message.
+ */
+function StatelessServerChannel(server, readableFactory, opts) {
+  ServerChannel.call(this, server, opts);
+
+  this._writable = undefined;
+  var self = this;
+  var readable;
+
+  process.nextTick(function () {
+    // Delay listening to allow handlers to be attached even if the factory is
+    // purely synchronous.
+    readable = readableFactory.call(self, function (err, writable) {
+      process.nextTick(function () {
+        // We delay once more here in case this call is synchronous, to allow
+        // the readable to always be populated first.
+        if (err) {
+          onFinish(err);
+          return;
+        }
+        self._writable = writable.on('finish', onFinish);
+        self.emit('_writable');
+      });
+    }).on('data', onRequest).on('end', onEnd);
+  });
+
+
+  function onRequest(obj) {
+    var id = obj.id;
+    var buf = Buffer.concat(obj.payload);
+    var err;
+    try {
+      var parts = readHead(HANDSHAKE_REQUEST_TYPE, buf);
+      var hreq = parts.head;
+      var adapter = self._getAdapter(hreq);
+    } catch (cause) {
+      err = toRpcError('INVALID_HANDSHAKE_REQUEST', cause);
+    }
+
+    var hres = self._createHandshakeResponse(err, hreq);
+    self.emit('handshake', hreq, hres);
+    if (err) {
+      done(self._encodeSystemError(err));
+    } else {
+      self._receive(parts.tail, adapter, done);
+    }
+
+    function done(resBuf) {
+      if (!self.destroyed) {
+        if (!self._writable) {
+          self.once('_writable', function () { done(resBuf); });
+          return;
+        }
+        self._writable.write({
+          id: id,
+          payload: [HANDSHAKE_RESPONSE_TYPE.toBuffer(hres), resBuf]
+        });
+      }
+      if (self._writable && self._endWritable) {
+        self._writable.end();
+      }
+    }
+  }
+
+  function onEnd() { self.destroy(); }
+
+  function onFinish(err) {
+    readable
+      .removeListener('data', onRequest)
+      .removeListener('end', onEnd);
+    self.destroy(err || true);
+  }
+}
+util.inherits(StatelessServerChannel, ServerChannel);
+
+/**
+ * Stateful transport listener.
+ *
+ * A handshake is done when the channel first receives a message, then all
+ * messages are sent without.
+ */
+function StatefulServerChannel(server, readable, writable, opts) {
+  ServerChannel.call(this, server, opts);
+  this._adapter = undefined;
+  this._writable = writable.on('finish', onFinish);
+  this._readable = readable.on('data', onHandshake).on('end', onEnd);
+
+  this
+    .once('_drain', function () {
+      // Stop listening to incoming events.
+      this._readable
+        .removeListener('data', onHandshake)
+        .removeListener('data', onRequest)
+        .removeListener('end', onEnd);
+    })
+    .once('eot', function () {
+      // Clean up any references to the channel on the underlying streams.
+      this._writable.removeListener('finish', onFinish);
+      if (this._endWritable) {
+        this._writable.end();
+      }
+    });
+
+  var self = this;
+
+  function onHandshake(obj) {
+    var id = obj.id;
+    if (!self._matchesPrefix(id)) {
+      return;
+    }
+    var buf = Buffer.concat(obj.payload);
+    var err;
+    try {
+      var parts = readHead(HANDSHAKE_REQUEST_TYPE, buf);
+      var hreq = parts.head;
+      self._adapter = self._getAdapter(hreq);
+    } catch (cause) {
+      err = toRpcError('INVALID_HANDSHAKE_REQUEST', cause);
+    }
+    var hres = self._createHandshakeResponse(err, hreq);
+    self.emit('handshake', hreq, hres);
+    if (err) {
+      // Either the client's protocol was unknown or it isn't compatible.
+      done(self._encodeSystemError(err));
+    } else {
+      self._readable
+        .removeListener('data', onHandshake)
+        .on('data', onRequest);
+      self._receive(parts.tail, self._adapter, done);
+    }
+
+    function done(resBuf) {
+      if (self.destroyed) {
+        return;
+      }
+      self._writable.write({
+        id: id,
+        payload: [HANDSHAKE_RESPONSE_TYPE.toBuffer(hres), resBuf]
+      });
+    }
+  }
+
+  function onRequest(obj) {
+    // These requests are not prefixed with handshakes.
+    var id = obj.id;
+    if (!self._matchesPrefix(id)) {
+      return;
+    }
+    var reqBuf = Buffer.concat(obj.payload);
+    self._receive(reqBuf, self._adapter, function (resBuf, oneWay) {
+      if (self.destroyed || oneWay) {
+        return;
+      }
+      self._writable.write({id: id, payload: [resBuf]});
+    });
+  }
+
+  function onEnd() { self.destroy(); }
+
+  function onFinish() { self.destroy(true); }
+}
+util.inherits(StatefulServerChannel, ServerChannel);
+
+// Helpers.
+
+/** Enhanced request, used inside forward middleware functions. */
+function WrappedRequest(msg, hdrs, req) {
+  this._msg = msg;
+  this.headers = hdrs || {};
+  this.request = req || {};
+}
+
+WrappedRequest.prototype.toBuffer = function () {
+  var msg = this._msg;
+  return Buffer.concat([
+    MAP_BYTES_TYPE.toBuffer(this.headers),
+    STRING_TYPE.toBuffer(msg.name),
+    msg.requestType.toBuffer(this.request)
+  ]);
+};
+
+/** Enhanced response, used inside forward middleware functions. */
+function WrappedResponse(msg, hdr, err, res) {
+  this._msg = msg;
+  this.headers = hdr;
+  this.error = err;
+  this.response = res;
+}
+
+WrappedResponse.prototype.toBuffer = function () {
+  var hdr = MAP_BYTES_TYPE.toBuffer(this.headers);
+  var hasError = this.error !== undefined;
+  return Buffer.concat([
+    hdr,
+    BOOLEAN_TYPE.toBuffer(hasError),
+    hasError ?
+      this._msg.errorType.toBuffer(this.error) :
+      this._msg.responseType.toBuffer(this.response)
+  ]);
+};
+
+/**
+ * Context for all middleware and handlers.
+ *
+ * It exposes a `locals` object which can be used to pass information between
+ * each other during a given call.
+ */
+function CallContext(msg, channel) {
+  this.channel = channel;
+  this.locals = {};
+  this.message = msg;
+  Object.freeze(this);
+}
+
+/**
+ * Callback registry.
+ *
+ * Callbacks added must accept an error as first argument. This is used by
+ * client channels to store pending calls. This class isn't exposed by the
+ * public API.
+ */
+function Registry(ctx, prefixLength) {
+  this._ctx = ctx; // Context for all callbacks.
+  this._mask = ~0 >>> (prefixLength | 0); // 16 bits by default.
+  this._id = 0; // Unique integer ID for each call.
+  this._n = 0; // Number of pending calls.
+  this._cbs = {};
+}
+
+Registry.prototype.get = function (id) { return this._cbs[id & this._mask]; };
+
+Registry.prototype.add = function (timeout, fn) {
+  this._id = (this._id + 1) & this._mask;
+
+  var self = this;
+  var id = this._id;
+  var timer;
+  if (timeout > 0) {
+    timer = setTimeout(function () { cb(new Error('timeout')); }, timeout);
+  }
+
+  this._cbs[id] = cb;
+  this._n++;
+  return id;
+
+  function cb() {
+    if (!self._cbs[id]) {
+      // The callback has already run.
+      return;
+    }
+    delete self._cbs[id];
+    self._n--;
+    if (timer) {
+      clearTimeout(timer);
+    }
+    fn.apply(self._ctx, arguments);
+  }
+};
+
+Registry.prototype.clear = function () {
+  Object.keys(this._cbs).forEach(function (id) {
+    this._cbs[id](new Error('interrupted'));
+  }, this);
+};
+
+/**
+ * Service resolution helper.
+ *
+ * It is used both by client and server channels, to respectively decode errors
+ * and responses, or requests.
+ */
+function Adapter(clientSvc, serverSvc, hash, isRemote) {
+  this._clientSvc = clientSvc;
+  this._serverSvc = serverSvc;
+  this._hash = hash; // Convenience to access it when creating handshakes.
+  this._isRemote = !!isRemote;
+  this._readers = createReaders(clientSvc, serverSvc);
+}
+
+Adapter.prototype._decodeRequest = function (buf) {
+  var tap = new Tap(buf);
+  var hdr = MAP_BYTES_TYPE._read(tap);
+  var name = STRING_TYPE._read(tap);
+  var msg, req;
+  if (name) {
+    msg = this._serverSvc.message(name);
+    req = this._readers[name + '?']._read(tap);
+  } else {
+    msg = PING_MESSAGE;
+  }
+  if (!tap.isValid()) {
+    throw new Error(f('truncated %s request', name || 'ping$'));
+  }
+  return new WrappedRequest(msg, hdr, req);
+};
+
+Adapter.prototype._decodeResponse = function (buf, wres, msg) {
+  var tap = new Tap(buf);
+  utils.copyOwnProperties(MAP_BYTES_TYPE._read(tap), wres.headers, true);
+  var isError = BOOLEAN_TYPE._read(tap);
+  var name = msg.name;
+  if (name) {
+    var reader = this._readers[name + (isError ? '*' : '!')];
+    msg = this._clientSvc.message(name);
+    if (isError) {
+      wres.error = reader._read(tap);
+    } else {
+      wres.response = reader._read(tap);
+    }
+    if (!tap.isValid()) {
+      throw new Error(f('truncated %s response', name));
+    }
+  } else {
+    msg = PING_MESSAGE;
+  }
+};
+
+/** Standard "un-framing" stream. */
+function FrameDecoder() {
+  stream.Transform.call(this, {readableObjectMode: true});
+  this._id = undefined;
+  this._buf = utils.newBuffer(0);
+  this._bufs = [];
+
+  this.on('finish', function () { this.push(null); });
+}
+util.inherits(FrameDecoder, stream.Transform);
+
+FrameDecoder.prototype._transform = function (buf, encoding, cb) {
+  buf = Buffer.concat([this._buf, buf]);
+  var frameLength;
+  while (
+    buf.length >= 4 &&
+    buf.length >= (frameLength = buf.readInt32BE(0)) + 4
+  ) {
+    if (frameLength) {
+      this._bufs.push(buf.slice(4, frameLength + 4));
+    } else {
+      var bufs = this._bufs;
+      this._bufs = [];
+      this.push({id: null, payload: bufs});
+    }
+    buf = buf.slice(frameLength + 4);
+  }
+  this._buf = buf;
+  cb();
+};
+
+FrameDecoder.prototype._flush = function (cb) {
+  if (this._buf.length || this._bufs.length) {
+    var bufs = this._bufs.slice();
+    bufs.unshift(this._buf);
+    var err = toRpcError('TRAILING_DATA');
+    // Attach the data to help debugging (e.g. if the encoded bytes contain a
+    // human-readable protocol like HTTP).
+    err.trailingData = Buffer.concat(bufs).toString();
+    this.emit('error', err);
+  }
+  cb();
+};
+
+/** Standard framing stream. */
+function FrameEncoder() {
+  stream.Transform.call(this, {writableObjectMode: true});
+  this.on('finish', function () { this.push(null); });
+}
+util.inherits(FrameEncoder, stream.Transform);
+
+FrameEncoder.prototype._transform = function (obj, encoding, cb) {
+  var bufs = obj.payload;
+  var i, l, buf;
+  for (i = 0, l = bufs.length; i < l; i++) {
+    buf = bufs[i];
+    this.push(intBuffer(buf.length));
+    this.push(buf);
+  }
+  this.push(intBuffer(0));
+  cb();
+};
+
+/** Netty-compatible decoding stream. */
+function NettyDecoder() {
+  stream.Transform.call(this, {readableObjectMode: true});
+  this._id = undefined;
+  this._frameCount = 0;
+  this._buf = utils.newBuffer(0);
+  this._bufs = [];
+
+  this.on('finish', function () { this.push(null); });
+}
+util.inherits(NettyDecoder, stream.Transform);
+
+NettyDecoder.prototype._transform = function (buf, encoding, cb) {
+  buf = Buffer.concat([this._buf, buf]);
+
+  while (true) {
+    if (this._id === undefined) {
+      if (buf.length < 8) {
+        this._buf = buf;
+        cb();
+        return;
+      }
+      this._id = buf.readInt32BE(0);
+      this._frameCount = buf.readInt32BE(4);
+      buf = buf.slice(8);
+    }
+
+    var frameLength;
+    while (
+      this._frameCount &&
+      buf.length >= 4 &&
+      buf.length >= (frameLength = buf.readInt32BE(0)) + 4
+    ) {
+      this._frameCount--;
+      this._bufs.push(buf.slice(4, frameLength + 4));
+      buf = buf.slice(frameLength + 4);
+    }
+
+    if (this._frameCount) {
+      this._buf = buf;
+      cb();
+      return;
+    } else {
+      var obj = {id: this._id, payload: this._bufs};
+      this._bufs = [];
+      this._id = undefined;
+      this.push(obj);
+    }
+  }
+};
+
+NettyDecoder.prototype._flush = FrameDecoder.prototype._flush;
+
+/** Netty-compatible encoding stream. */
+function NettyEncoder() {
+  stream.Transform.call(this, {writableObjectMode: true});
+  this.on('finish', function () { this.push(null); });
+}
+util.inherits(NettyEncoder, stream.Transform);
+
+NettyEncoder.prototype._transform = function (obj, encoding, cb) {
+  var bufs = obj.payload;
+  var l = bufs.length;
+  var buf;
+  // Header: [ ID, number of frames ]
+  buf = utils.newBuffer(8);
+  buf.writeInt32BE(obj.id, 0);
+  buf.writeInt32BE(l, 4);
+  this.push(buf);
+  // Frames, each: [ length, bytes ]
+  var i;
+  for (i = 0; i < l; i++) {
+    buf = bufs[i];
+    this.push(intBuffer(buf.length));
+    this.push(buf);
+  }
+  cb();
+};
+
+/**
+ * Returns a buffer containing an integer's big-endian representation.
+ *
+ * @param n {Number} Integer.
+ */
+function intBuffer(n) {
+  var buf = utils.newBuffer(4);
+  buf.writeInt32BE(n);
+  return buf;
+}
+
+/**
+ * Decode a type used as prefix inside a buffer.
+ *
+ * @param type {Type} The type of the prefix.
+ * @param buf {Buffer} Encoded bytes.
+ *
+ * This function will return an object `{head, tail}` where head contains the
+ * decoded value and tail the rest of the buffer. An error will be thrown if
+ * the prefix cannot be decoded.
+ */
+function readHead(type, buf) {
+  var tap = new Tap(buf);
+  var head = type._read(tap);
+  if (!tap.isValid()) {
+    throw new Error(f('truncated %j', type.schema()));
+  }
+  return {head: head, tail: tap.buf.slice(tap.pos)};
+}
+
+/**
+ * Generate a decoder, optimizing the case where reader and writer are equal.
+ *
+ * @param rtype {Type} Reader's type.
+ * @param wtype {Type} Writer's type.
+ */
+function createReader(rtype, wtype) {
+  return rtype.equals(wtype) ? rtype : rtype.createResolver(wtype);
+}
+
+/**
+ * Generate all readers for a given protocol combination.
+ *
+ * @param clientSvc {Service} Client service.
+ * @param serverSvc {Service} Client service.
+ */
+function createReaders(clientSvc, serverSvc) {
+  var obj = {};
+  clientSvc.messages.forEach(function (c) {
+    var n = c.name;
+    var s = serverSvc.message(n);
+    try {
+      if (!s) {
+        throw new Error(f('missing server message: %s', n));
+      }
+      if (s.oneWay !== c.oneWay) {
+        throw new Error(f('inconsistent one-way message: %s', n));
+      }
+      obj[n + '?'] = createReader(s.requestType, c.requestType);
+      obj[n + '*'] = createReader(c.errorType, s.errorType);
+      obj[n + '!'] = createReader(c.responseType, s.responseType);
+    } catch (cause) {
+      throw toRpcError('INCOMPATIBLE_PROTOCOL', cause);
+    }
+  });
+  return obj;
+}
+
+/**
+ * Populate a cache from a list of protocols.
+ *
+ * @param cache {Object} Cache of adapters.
+ * @param svc {Service} The local service (either client or server).
+ * @param ptcls {Array} Array of protocols to insert.
+ * @param isClient {Boolean} Whether the local service is a client's or
+ * server's.
+ */
+function insertRemoteProtocols(cache, ptcls, svc, isClient) {
+  Object.keys(ptcls).forEach(function (hash) {
+    var ptcl = ptcls[hash];
+    var clientSvc, serverSvc;
+    if (isClient) {
+      clientSvc = svc;
+      serverSvc = Service.forProtocol(ptcl);
+    } else {
+      clientSvc = Service.forProtocol(ptcl);
+      serverSvc = svc;
+    }
+    cache[hash] = new Adapter(clientSvc, serverSvc, hash, true);
+  });
+}
+
+/**
+ * Extract remote protocols from a cache
+ *
+ * @param cache {Object} Cache of adapters.
+ * @param isClient {Boolean} Whether the remote protocols extracted should be
+ * the servers' or clients'.
+ */
+function getRemoteProtocols(cache, isClient) {
+  var ptcls = {};
+  Object.keys(cache).forEach(function (hs) {
+    var adapter = cache[hs];
+    if (adapter._isRemote) {
+      var svc = isClient ? adapter._serverSvc : adapter._clientSvc;
+      ptcls[hs] = svc.protocol;
+    }
+  });
+  return ptcls;
+}
+
+/**
+ * Check whether something is an `Error`.
+ *
+ * @param any {Object} Any object.
+ */
+function isError(any) {
+  // Also not ideal, but avoids brittle `instanceof` checks.
+  return !!any && Object.prototype.toString.call(any) === '[object Error]';
+}
+
+/**
+ * Forward any errors emitted on the source to the destination.
+ *
+ * @param src {EventEmitter} The initial source of error events.
+ * @param dst {EventEmitter} The new target of the source's error events. The
+ * original source will be provided as second argument (the error being the
+ * first).
+ *
+ * As a convenience, the source will be returned.
+ */
+function forwardErrors(src, dst) {
+  return src.on('error', function (err) {
+    dst.emit('error', err, src);
+  });
+}
+
+/**
+ * Create an error.
+ *
+ * @param msg {String} Error message.
+ * @param cause {Error} The cause of the error. It is available as `cause`
+ * field on the outer error.
+ */
+function toError(msg, cause) {
+  var err = new Error(msg);
+  err.cause = cause;
+  return err;
+}
+
+/**
+ * Mark an error.
+ *
+ * @param rpcCode {String} Code representing the failure.
+ * @param cause {Error} The cause of the error. It is available as `cause`
+ * field on the outer error.
+ *
+ * This is used to keep the argument of channels' `'error'` event errors.
+ */
+function toRpcError(rpcCode, cause) {
+  var err = toError(rpcCode.toLowerCase().replace(/_/g, ' '), cause);
+  err.rpcCode = (cause && cause.rpcCode) ? cause.rpcCode : rpcCode;
+  return err;
+}
+
+/**
+ * Provide a helpful error to identify why serialization failed.
+ *
+ * @param err {Error} The error to decorate.
+ * @param obj {...} The object containing fields to validated.
+ * @param fields {Array} Information about the fields to validate.
+ */
+function serializationError(msg, obj, fields) {
+  var details = [];
+  var i, l, field;
+  for (i = 0, l = fields.length; i < l; i++) {
+    field = fields[i];
+    field.type.isValid(obj[field.name], {errorHook: errorHook});
+  }
+  var detailsStr = details
+    .map(function (obj) {
+      return f('%s = %j but expected %s', obj.path, obj.value, obj.type);
+    })
+    .join(', ');
+  var err = new Error(f('%s (%s)', msg, detailsStr));
+  err.details = details;
+  return err;
+
+  function errorHook(parts, any, type) {
+    var strs = [];
+    var i, l, part;
+    for (i = 0, l = parts.length; i < l; i++) {
+      part = parts[i];
+      if (isNaN(part)) {
+        strs.push('.' + part);
+      } else {
+        strs.push('[' + part + ']');
+      }
+    }
+    details.push({
+      path: field.name + strs.join(''),
+      value: any,
+      type: type
+    });
+  }
+}
+
+/**
+ * Compute a prefix of fixed length from a string.
+ *
+ * @param scope {String} Namespace to be hashed.
+ */
+function normalizedPrefix(scope) {
+  return scope ?
+    utils.getHash(scope).readInt16BE(0) << (32 - PREFIX_LENGTH) :
+    0;
+}
+
+/**
+ * Check whether an ID matches the prefix.
+ *
+ * @param id {Integer} Number to check.
+ * @param prefix {Integer} Already shifted prefix.
+ */
+function matchesPrefix(id, prefix) {
+  return ((id ^ prefix) >> (32 - PREFIX_LENGTH)) === 0;
+}
+
+/**
+ * Check whether something is a stream.
+ *
+ * @param any {Object} Any object.
+ */
+function isStream(any) {
+  // This is a hacky way of checking that the transport is a stream-like
+  // object. We unfortunately can't use `instanceof Stream` checks since
+  // some libraries (e.g. websocket-stream) return streams which don't
+  // inherit from it.
+  return !!(any && any.pipe);
+}
+
+/**
+ * Get a message, asserting that it exists.
+ *
+ * @param svc {Service} The protocol to look into.
+ * @param name {String} The message's name.
+ */
+function getExistingMessage(svc, name) {
+  var msg = svc.message(name);
+  if (!msg) {
+    throw new Error(f('unknown message: %s', name));
+  }
+  return msg;
+}
+
+/**
+ * Middleware logic.
+ *
+ * This is used both in clients and servers to intercept call handling (e.g. to
+ * populate headers, do access control).
+ *
+ * @param params {Object} The following parameters:
+ *  + fns {Array} Array of middleware functions.
+ *  + ctx {Object} Context used to call the middleware functions, onTransition,
+ *    and onCompletion.
+ *  + wreq {WrappedRequest}
+ *  + wres {WrappedResponse}
+ *  + onTransition {Function} End of forward phase callback. It accepts an
+ *    eventual error as single argument. This will be used for the backward
+ *    phase. This function is guaranteed to be called at most once.
+ *  + onCompletion {Function} Final handler, it takes an error as unique
+ *    argument. This function is guaranteed to be only at most once.
+ *  + onError {Function} Error handler, called if an intermediate callback is
+ *    called multiple times.
+ */
+function chainMiddleware(params) {
+  var args = [params.wreq, params.wres];
+  var cbs = [];
+  var cause; // Backpropagated error.
+  forward(0);
+
+  function forward(pos) {
+    var isDone = false;
+    if (pos < params.fns.length) {
+      params.fns[pos].apply(params.ctx, args.concat(function (err, cb) {
+        if (isDone) {
+          params.onError(toError('duplicate forward middleware call', err));
+          return;
+        }
+        isDone = true;
+        if (
+          err || (
+            params.wres && ( // Non one-way messages.
+              params.wres.error !== undefined ||
+              params.wres.response !== undefined
+            )
+          )
+        ) {
+          // Stop the forward phase, bypass the handler, and start the backward
+          // phase. Note that we ignore any callback argument in this case.
+          cause = err;
+          backward();
+          return;
+        }
+        if (cb) {
+          cbs.push(cb);
+        }
+        forward(++pos);
+      }));
+    } else {
+      // Done with the middleware forward functions, call the handler.
+      params.onTransition.apply(params.ctx, args.concat(function (err) {
+        if (isDone) {
+          params.onError(toError('duplicate handler call', err));
+          return;
+        }
+        isDone = true;
+        cause = err;
+        process.nextTick(backward);
+      }));
+    }
+  }
+
+  function backward() {
+    var cb = cbs.pop();
+    if (cb) {
+      var isDone = false;
+      cb.call(params.ctx, cause, function (err) {
+        if (isDone) {
+          params.onError(toError('duplicate backward middleware call', err));
+          return;
+        }
+        // Substitute the error.
+        cause = err;
+        isDone = true;
+        backward();
+      });
+    } else {
+      // Done with all middleware calls.
+      params.onCompletion.call(params.ctx, cause);
+    }
+  }
+}
+
+
+module.exports = {
+  Adapter: Adapter,
+  HANDSHAKE_REQUEST_TYPE: HANDSHAKE_REQUEST_TYPE,
+  HANDSHAKE_RESPONSE_TYPE: HANDSHAKE_RESPONSE_TYPE,
+  Message: Message,
+  Registry: Registry,
+  Service: Service,
+  discoverProtocol: discoverProtocol,
+  streams: {
+    FrameDecoder: FrameDecoder,
+    FrameEncoder: FrameEncoder,
+    NettyDecoder: NettyDecoder,
+    NettyEncoder: NettyEncoder
+  }
+};
+
+
+/***/ }),
 /* 183 */,
 /* 184 */,
 /* 185 */
@@ -9995,7 +12586,12 @@ utils.mix = (model, ...mixins) => {
 /* 370 */,
 /* 371 */,
 /* 372 */,
-/* 373 */,
+/* 373 */
+/***/ (function(module) {
+
+module.exports = require("crypto");
+
+/***/ }),
 /* 374 */,
 /* 375 */,
 /* 376 */,
@@ -15038,7 +17634,3317 @@ module.exports = cloneDeep;
 
 
 /***/ }),
-/* 453 */,
+/* 453 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+"use strict";
+/* jshint node: true */
+
+// TODO: Make it easier to implement custom types. This will likely require
+// exposing the `Tap` object, perhaps under another name. Probably worth a
+// major release.
+// TODO: Allow configuring when to write the size when writing arrays and maps,
+// and customizing their block size.
+// TODO: Code-generate `compare` and `clone` record and union methods.
+
+
+
+/**
+ * This module defines all Avro data types and their serialization logic.
+ *
+ */
+
+var utils = __webpack_require__(777),
+    buffer = __webpack_require__(407), // For `SlowBuffer`.
+    util = __webpack_require__(669);
+
+
+// Convenience imports.
+var Tap = utils.Tap;
+var debug = util.debuglog('avsc:types');
+var f = util.format;
+
+// All non-union concrete (i.e. non-logical) Avro types.
+var TYPES = {
+  'array': ArrayType,
+  'boolean': BooleanType,
+  'bytes': BytesType,
+  'double': DoubleType,
+  'enum': EnumType,
+  'error': RecordType,
+  'fixed': FixedType,
+  'float': FloatType,
+  'int': IntType,
+  'long': LongType,
+  'map': MapType,
+  'null': NullType,
+  'record': RecordType,
+  'string': StringType
+};
+
+// Random generator.
+var RANDOM = new utils.Lcg();
+
+// Encoding tap (shared for performance).
+var TAP = new Tap(new buffer.SlowBuffer(1024));
+
+// Currently active logical type, used for name redirection.
+var LOGICAL_TYPE = null;
+
+// Underlying types of logical types currently being instantiated. This is used
+// to be able to reference names (i.e. for branches) during instantiation.
+var UNDERLYING_TYPES = [];
+
+/**
+ * "Abstract" base Avro type.
+ *
+ * This class' constructor will register any named types to support recursive
+ * schemas. All type values are represented in memory similarly to their JSON
+ * representation, except for:
+ *
+ * + `bytes` and `fixed` which are represented as `Buffer`s.
+ * + `union`s which will be "unwrapped" unless the `wrapUnions` option is set.
+ *
+ *  See individual subclasses for details.
+ */
+function Type(schema, opts) {
+  var type;
+  if (LOGICAL_TYPE) {
+    type = LOGICAL_TYPE;
+    UNDERLYING_TYPES.push([LOGICAL_TYPE, this]);
+    LOGICAL_TYPE = null;
+  } else {
+    type = this;
+  }
+
+  // Lazily instantiated hash string. It will be generated the first time the
+  // type's default fingerprint is computed (for example when using `equals`).
+  // We use a mutable object since types are frozen after instantiation.
+  this._hash = new Hash();
+  this.name = undefined;
+  this.aliases = undefined;
+  this.doc = (schema && schema.doc) ? '' + schema.doc : undefined;
+
+  if (schema) {
+    // This is a complex (i.e. non-primitive) type.
+    var name = schema.name;
+    var namespace = schema.namespace === undefined ?
+      opts && opts.namespace :
+      schema.namespace;
+    if (name !== undefined) {
+      // This isn't an anonymous type.
+      name = maybeQualify(name, namespace);
+      if (isPrimitive(name)) {
+        // Avro doesn't allow redefining primitive names.
+        throw new Error(f('cannot rename primitive type: %j', name));
+      }
+      var registry = opts && opts.registry;
+      if (registry) {
+        if (registry[name] !== undefined) {
+          throw new Error(f('duplicate type name: %s', name));
+        }
+        registry[name] = type;
+      }
+    } else if (opts && opts.noAnonymousTypes) {
+      throw new Error(f('missing name property in schema: %j', schema));
+    }
+    this.name = name;
+    this.aliases = schema.aliases ?
+      schema.aliases.map(function (s) { return maybeQualify(s, namespace); }) :
+      [];
+  }
+}
+
+Type.forSchema = function (schema, opts) {
+  opts = opts || {};
+  opts.registry = opts.registry || {};
+
+  var UnionType = (function (wrapUnions) {
+    if (wrapUnions === true) {
+      wrapUnions = 'always';
+    } else if (wrapUnions === false) {
+      wrapUnions = 'never';
+    } else if (wrapUnions === undefined) {
+      wrapUnions = 'auto';
+    } else if (typeof wrapUnions == 'string') {
+      wrapUnions = wrapUnions.toLowerCase();
+    }
+    switch (wrapUnions) {
+      case 'always':
+        return WrappedUnionType;
+      case 'never':
+        return UnwrappedUnionType;
+      case 'auto':
+        return undefined; // Determined dynamically later on.
+      default:
+        throw new Error(f('invalid wrap unions option: %j', wrapUnions));
+    }
+  })(opts.wrapUnions);
+
+  if (schema === null) {
+    // Let's be helpful for this common error.
+    throw new Error('invalid type: null (did you mean "null"?)');
+  }
+
+  if (Type.isType(schema)) {
+    return schema;
+  }
+
+  var type;
+  if (opts.typeHook && (type = opts.typeHook(schema, opts))) {
+    if (!Type.isType(type)) {
+      throw new Error(f('invalid typehook return value: %j', type));
+    }
+    return type;
+  }
+
+  if (typeof schema == 'string') { // Type reference.
+    schema = maybeQualify(schema, opts.namespace);
+    type = opts.registry[schema];
+    if (type) {
+      // Type was already defined, return it.
+      return type;
+    }
+    if (isPrimitive(schema)) {
+      // Reference to a primitive type. These are also defined names by default
+      // so we create the appropriate type and it to the registry for future
+      // reference.
+      return opts.registry[schema] = Type.forSchema({type: schema}, opts);
+    }
+    throw new Error(f('undefined type name: %s', schema));
+  }
+
+  if (schema.logicalType && opts.logicalTypes && !LOGICAL_TYPE) {
+    var DerivedType = opts.logicalTypes[schema.logicalType];
+    if (DerivedType) {
+      var namespace = opts.namespace;
+      var registry = {};
+      Object.keys(opts.registry).forEach(function (key) {
+        registry[key] = opts.registry[key];
+      });
+      try {
+        debug('instantiating logical type for %s', schema.logicalType);
+        return new DerivedType(schema, opts);
+      } catch (err) {
+        debug('failed to instantiate logical type for %s', schema.logicalType);
+        if (opts.assertLogicalTypes) {
+          // The spec mandates that we fall through to the underlying type if
+          // the logical type is invalid. We provide this option to ease
+          // debugging.
+          throw err;
+        }
+        LOGICAL_TYPE = null;
+        opts.namespace = namespace;
+        opts.registry = registry;
+      }
+    }
+  }
+
+  if (Array.isArray(schema)) { // Union.
+    // We temporarily clear the logical type since we instantiate the branch's
+    // types before the underlying union's type (necessary to decide whether the
+    // union is ambiguous or not).
+    var logicalType = LOGICAL_TYPE;
+    LOGICAL_TYPE = null;
+    var types = schema.map(function (obj) {
+      return Type.forSchema(obj, opts);
+    });
+    if (!UnionType) {
+      UnionType = isAmbiguous(types) ? WrappedUnionType : UnwrappedUnionType;
+    }
+    LOGICAL_TYPE = logicalType;
+    type = new UnionType(types, opts);
+  } else { // New type definition.
+    type = (function (typeName) {
+      var Type = TYPES[typeName];
+      if (Type === undefined) {
+        throw new Error(f('unknown type: %j', typeName));
+      }
+      return new Type(schema, opts);
+    })(schema.type);
+  }
+  return type;
+};
+
+Type.forValue = function (val, opts) {
+  opts = opts || {};
+
+  // Sentinel used when inferring the types of empty arrays.
+  opts.emptyArrayType = opts.emptyArrayType || Type.forSchema({
+    type: 'array', items: 'null'
+  });
+
+  // Optional custom inference hook.
+  if (opts.valueHook) {
+    var type = opts.valueHook(val, opts);
+    if (type !== undefined) {
+      if (!Type.isType(type)) {
+        throw new Error(f('invalid value hook return value: %j', type));
+      }
+      return type;
+    }
+  }
+
+  // Default inference logic.
+  switch (typeof val) {
+    case 'string':
+      return Type.forSchema('string', opts);
+    case 'boolean':
+      return Type.forSchema('boolean', opts);
+    case 'number':
+      if ((val | 0) === val) {
+        return Type.forSchema('int', opts);
+      } else if (Math.abs(val) < 9007199254740991) {
+        return Type.forSchema('float', opts);
+      }
+      return Type.forSchema('double', opts);
+    case 'object':
+      if (val === null) {
+        return Type.forSchema('null', opts);
+      } else if (Array.isArray(val)) {
+        if (!val.length) {
+          return opts.emptyArrayType;
+        }
+        return Type.forSchema({
+          type: 'array',
+          items: Type.forTypes(
+            val.map(function (v) { return Type.forValue(v, opts); }),
+            opts
+          )
+        }, opts);
+      } else if (Buffer.isBuffer(val)) {
+        return Type.forSchema('bytes', opts);
+      }
+      var fieldNames = Object.keys(val);
+      if (fieldNames.some(function (s) { return !utils.isValidName(s); })) {
+        // We have to fall back to a map.
+        return Type.forSchema({
+          type: 'map',
+          values: Type.forTypes(fieldNames.map(function (s) {
+            return Type.forValue(val[s], opts);
+          }), opts)
+        }, opts);
+      }
+      return Type.forSchema({
+        type: 'record',
+        fields: fieldNames.map(function (s) {
+          return {name: s, type: Type.forValue(val[s], opts)};
+        })
+      }, opts);
+    default:
+      throw new Error(f('cannot infer type from: %j', val));
+  }
+};
+
+Type.forTypes = function (types, opts) {
+  if (!types.length) {
+    throw new Error('no types to combine');
+  }
+  if (types.length === 1) {
+    return types[0]; // Nothing to do.
+  }
+  opts = opts || {};
+
+  // Extract any union types, with special care for wrapped unions (see below).
+  var expanded = [];
+  var numWrappedUnions = 0;
+  var isValidWrappedUnion = true;
+  types.forEach(function (type) {
+    switch (type.typeName) {
+      case 'union:unwrapped':
+        isValidWrappedUnion = false;
+        expanded = expanded.concat(type.types);
+        break;
+      case 'union:wrapped':
+        numWrappedUnions++;
+        expanded = expanded.concat(type.types);
+        break;
+      case 'null':
+        expanded.push(type);
+        break;
+      default:
+        isValidWrappedUnion = false;
+        expanded.push(type);
+    }
+  });
+  if (numWrappedUnions) {
+    if (!isValidWrappedUnion) {
+      // It is only valid to combine wrapped unions when no other type is
+      // present other than wrapped unions and nulls (otherwise the values of
+      // others wouldn't be valid in the resulting union).
+      throw new Error('cannot combine wrapped union');
+    }
+    var branchTypes = {};
+    expanded.forEach(function (type) {
+      var name = type.branchName;
+      var branchType = branchTypes[name];
+      if (!branchType) {
+        branchTypes[name] = type;
+      } else if (!type.equals(branchType)) {
+        throw new Error('inconsistent branch type');
+      }
+    });
+    var wrapUnions = opts.wrapUnions;
+    var unionType;
+    opts.wrapUnions = true;
+    try {
+      unionType = Type.forSchema(Object.keys(branchTypes).map(function (name) {
+        return branchTypes[name];
+      }), opts);
+    } catch (err) {
+      opts.wrapUnions = wrapUnions;
+      throw err;
+    }
+    opts.wrapUnions = wrapUnions;
+    return unionType;
+  }
+
+  // Group types by category, similar to the logic for unwrapped unions.
+  var bucketized = {};
+  expanded.forEach(function (type) {
+    var bucket = getTypeBucket(type);
+    var bucketTypes = bucketized[bucket];
+    if (!bucketTypes) {
+      bucketized[bucket] = bucketTypes = [];
+    }
+    bucketTypes.push(type);
+  });
+
+  // Generate the "augmented" type for each group.
+  var buckets = Object.keys(bucketized);
+  var augmented = buckets.map(function (bucket) {
+    var bucketTypes = bucketized[bucket];
+    if (bucketTypes.length === 1) {
+      return bucketTypes[0];
+    } else {
+      switch (bucket) {
+        case 'null':
+        case 'boolean':
+          return bucketTypes[0];
+        case 'number':
+          return combineNumbers(bucketTypes);
+        case 'string':
+          return combineStrings(bucketTypes, opts);
+        case 'buffer':
+          return combineBuffers(bucketTypes, opts);
+        case 'array':
+          // Remove any sentinel arrays (used when inferring from empty arrays)
+          // to avoid making things nullable when they shouldn't be.
+          bucketTypes = bucketTypes.filter(function (t) {
+            return t !== opts.emptyArrayType;
+          });
+          if (!bucketTypes.length) {
+            // We still don't have a real type, just return the sentinel.
+            return opts.emptyArrayType;
+          }
+          return Type.forSchema({
+            type: 'array',
+            items: Type.forTypes(bucketTypes.map(function (t) {
+              return t.itemsType;
+            }), opts)
+          }, opts);
+        default:
+          return combineObjects(bucketTypes, opts);
+      }
+    }
+  });
+
+  if (augmented.length === 1) {
+    return augmented[0];
+  } else {
+    // We return an (unwrapped) union of all augmented types.
+    return Type.forSchema(augmented, opts);
+  }
+};
+
+Type.isType = function (/* any, [prefix] ... */) {
+  var l = arguments.length;
+  if (!l) {
+    return false;
+  }
+
+  var any = arguments[0];
+  if (
+    !any ||
+    typeof any._update != 'function' ||
+    typeof any.fingerprint != 'function'
+  ) {
+    // Not fool-proof, but most likely good enough.
+    return false;
+  }
+
+  if (l === 1) {
+    // No type names specified, we are done.
+    return true;
+  }
+
+  // We check if at least one of the prefixes matches.
+  var typeName = any.typeName;
+  var i;
+  for (i = 1; i < l; i++) {
+    if (typeName.indexOf(arguments[i]) === 0) {
+      return true;
+    }
+  }
+  return false;
+};
+
+Type.__reset = function (size) {
+  debug('resetting type buffer to %d', size);
+  TAP.buf = new buffer.SlowBuffer(size);
+};
+
+Object.defineProperty(Type.prototype, 'branchName', {
+  enumerable: true,
+  get: function () {
+    var type = Type.isType(this, 'logical') ? this.underlyingType : this;
+    if (type.name) {
+      return type.name;
+    }
+    if (Type.isType(type, 'abstract')) {
+      return type._concreteTypeName;
+    }
+    return Type.isType(type, 'union') ? undefined : type.typeName;
+  }
+});
+
+Type.prototype.clone = function (val, opts) {
+  if (opts) {
+    opts = {
+      coerce: !!opts.coerceBuffers | 0, // Coerce JSON to Buffer.
+      fieldHook: opts.fieldHook,
+      qualifyNames: !!opts.qualifyNames,
+      skip: !!opts.skipMissingFields,
+      wrap: !!opts.wrapUnions | 0 // Wrap first match into union.
+    };
+    return this._copy(val, opts);
+  } else {
+    // If no modifications are required, we can get by with a serialization
+    // roundtrip (generally much faster than a standard deep copy).
+    return this.fromBuffer(this.toBuffer(val));
+  }
+};
+
+Type.prototype.compare = utils.abstractFunction;
+
+Type.prototype.compareBuffers = function (buf1, buf2) {
+  return this._match(new Tap(buf1), new Tap(buf2));
+};
+
+Type.prototype.createResolver = function (type, opts) {
+  if (!Type.isType(type)) {
+    // More explicit error message than the "incompatible type" thrown
+    // otherwise (especially because of the overridden `toJSON` method).
+    throw new Error(f('not a type: %j', type));
+  }
+
+  if (!Type.isType(this, 'union', 'logical') && Type.isType(type, 'logical')) {
+    // Trying to read a logical type as a built-in: unwrap the logical type.
+    // Note that we exclude unions to support resolving into unions containing
+    // logical types.
+    return this.createResolver(type.underlyingType, opts);
+  }
+
+  opts = opts || {};
+  opts.registry = opts.registry || {};
+
+  var resolver, key;
+  if (
+    Type.isType(this, 'record', 'error') &&
+    Type.isType(type, 'record', 'error')
+  ) {
+    // We allow conversions between records and errors.
+    key = this.name + ':' + type.name; // ':' is illegal in Avro type names.
+    resolver = opts.registry[key];
+    if (resolver) {
+      return resolver;
+    }
+  }
+
+  resolver = new Resolver(this);
+  if (key) { // Register resolver early for recursive schemas.
+    opts.registry[key] = resolver;
+  }
+
+  if (Type.isType(type, 'union')) {
+    var resolvers = type.types.map(function (t) {
+      return this.createResolver(t, opts);
+    }, this);
+    resolver._read = function (tap) {
+      var index = tap.readLong();
+      var resolver = resolvers[index];
+      if (resolver === undefined) {
+        throw new Error(f('invalid union index: %s', index));
+      }
+      return resolvers[index]._read(tap);
+    };
+  } else {
+    this._update(resolver, type, opts);
+  }
+
+  if (!resolver._read) {
+    throw new Error(f('cannot read %s as %s', type, this));
+  }
+  return Object.freeze(resolver);
+};
+
+Type.prototype.decode = function (buf, pos, resolver) {
+  var tap = new Tap(buf, pos);
+  var val = readValue(this, tap, resolver);
+  if (!tap.isValid()) {
+    return {value: undefined, offset: -1};
+  }
+  return {value: val, offset: tap.pos};
+};
+
+Type.prototype.encode = function (val, buf, pos) {
+  var tap = new Tap(buf, pos);
+  this._write(tap, val);
+  if (!tap.isValid()) {
+    // Don't throw as there is no way to predict this. We also return the
+    // number of missing bytes to ease resizing.
+    return buf.length - tap.pos;
+  }
+  return tap.pos;
+};
+
+Type.prototype.equals = function (type, opts) {
+  var canon = ( // Canonical equality.
+    Type.isType(type) &&
+    this.fingerprint().equals(type.fingerprint())
+  );
+  if (!canon || !(opts && opts.strict)) {
+    return canon;
+  }
+  return (
+    JSON.stringify(this.schema({exportAttrs: true})) ===
+    JSON.stringify(type.schema({exportAttrs: true}))
+  );
+};
+
+Type.prototype.fingerprint = function (algorithm) {
+  if (!algorithm) {
+    if (!this._hash.str) {
+      var schemaStr = JSON.stringify(this.schema());
+      this._hash.str = utils.getHash(schemaStr).toString('binary');
+    }
+    return utils.bufferFrom(this._hash.str, 'binary');
+  } else {
+    return utils.getHash(JSON.stringify(this.schema()), algorithm);
+  }
+};
+
+Type.prototype.fromBuffer = function (buf, resolver, noCheck) {
+  var tap = new Tap(buf);
+  var val = readValue(this, tap, resolver, noCheck);
+  if (!tap.isValid()) {
+    throw new Error('truncated buffer');
+  }
+  if (!noCheck && tap.pos < buf.length) {
+    throw new Error('trailing data');
+  }
+  return val;
+};
+
+Type.prototype.fromString = function (str) {
+  return this._copy(JSON.parse(str), {coerce: 2});
+};
+
+Type.prototype.inspect = function () {
+  var typeName = this.typeName;
+  var className = getClassName(typeName);
+  if (isPrimitive(typeName)) {
+    // The class name is sufficient to identify the type.
+    return f('<%s>', className);
+  } else {
+    // We add a little metadata for convenience.
+    var obj = this.schema({exportAttrs: true, noDeref: true});
+    if (typeof obj == 'object' && !Type.isType(this, 'logical')) {
+      obj.type = undefined; // Would be redundant with constructor name.
+    }
+    return f('<%s %j>', className, obj);
+  }
+};
+
+Type.prototype.isValid = function (val, opts) {
+  // We only have a single flag for now, so no need to complicate things.
+  var flags = (opts && opts.noUndeclaredFields) | 0;
+  var errorHook = opts && opts.errorHook;
+  var hook, path;
+  if (errorHook) {
+    path = [];
+    hook = function (any, type) {
+      errorHook.call(this, path.slice(), any, type, val);
+    };
+  }
+  return this._check(val, flags, hook, path);
+};
+
+Type.prototype.random = utils.abstractFunction;
+
+Type.prototype.schema = function (opts) {
+  // Copy the options to avoid mutating the original options object when we add
+  // the registry of dereferenced types.
+  return this._attrs({
+    exportAttrs: !!(opts && opts.exportAttrs),
+    noDeref: !!(opts && opts.noDeref)
+  });
+};
+
+Type.prototype.toBuffer = function (val) {
+  TAP.pos = 0;
+  this._write(TAP, val);
+  var buf = utils.newBuffer(TAP.pos);
+  if (TAP.isValid()) {
+    TAP.buf.copy(buf, 0, 0, TAP.pos);
+  } else {
+    this._write(new Tap(buf), val);
+  }
+  return buf;
+};
+
+Type.prototype.toJSON = function () {
+  // Convenience to allow using `JSON.stringify(type)` to get a type's schema.
+  return this.schema({exportAttrs: true});
+};
+
+Type.prototype.toString = function (val) {
+  if (val === undefined) {
+    // Consistent behavior with standard `toString` expectations.
+    return JSON.stringify(this.schema({noDeref: true}));
+  }
+  return JSON.stringify(this._copy(val, {coerce: 3}));
+};
+
+Type.prototype.wrap = function (val) {
+  var Branch = this._branchConstructor;
+  return Branch === null ? null : new Branch(val);
+};
+
+Type.prototype._attrs = function (opts) {
+  // This function handles a lot of the common logic to schema generation
+  // across types, for example keeping track of which types have already been
+  // de-referenced (i.e. derefed).
+  opts.derefed = opts.derefed || {};
+  var name = this.name;
+  if (name !== undefined) {
+    if (opts.noDeref || opts.derefed[name]) {
+      return name;
+    }
+    opts.derefed[name] = true;
+  }
+  var schema = {};
+  // The order in which we add fields to the `schema` object matters here.
+  // Since JS objects are unordered, this implementation (unfortunately) relies
+  // on engines returning properties in the same order that they are inserted
+  // in. This is not in the JS spec, but can be "somewhat" safely assumed (see
+  // http://stackoverflow.com/q/5525795/1062617).
+  if (this.name !== undefined) {
+    schema.name = name;
+  }
+  schema.type = this.typeName;
+  var derefedSchema = this._deref(schema, opts);
+  if (derefedSchema !== undefined) {
+    // We allow the original schema to be overridden (this will happen for
+    // primitive types and logical types).
+    schema = derefedSchema;
+  }
+  if (opts.exportAttrs) {
+    if (this.aliases && this.aliases.length) {
+      schema.aliases = this.aliases;
+    }
+    if (this.doc !== undefined) {
+      schema.doc = this.doc;
+    }
+  }
+  return schema;
+};
+
+Type.prototype._createBranchConstructor = function () {
+  // jshint -W054
+  var name = this.branchName;
+  if (name === 'null') {
+    return null;
+  }
+  var attr = ~name.indexOf('.') ? 'this[\'' + name + '\']' : 'this.' + name;
+  var body = 'return function Branch$(val) { ' + attr + ' = val; };';
+  var Branch = (new Function(body))();
+  Branch.type = this;
+  Branch.prototype.unwrap = new Function('return ' + attr + ';');
+  Branch.prototype.unwrapped = Branch.prototype.unwrap; // Deprecated.
+  return Branch;
+};
+
+Type.prototype._peek = function (tap) {
+  var pos = tap.pos;
+  var val = this._read(tap);
+  tap.pos = pos;
+  return val;
+};
+
+Type.prototype._check = utils.abstractFunction;
+Type.prototype._copy = utils.abstractFunction;
+Type.prototype._deref = utils.abstractFunction;
+Type.prototype._match = utils.abstractFunction;
+Type.prototype._read = utils.abstractFunction;
+Type.prototype._skip = utils.abstractFunction;
+Type.prototype._update = utils.abstractFunction;
+Type.prototype._write = utils.abstractFunction;
+
+// "Deprecated" getters (will be explicitly deprecated in 5.1).
+
+Type.prototype.getAliases = function () { return this.aliases; };
+
+Type.prototype.getFingerprint = Type.prototype.fingerprint;
+
+Type.prototype.getName = function (asBranch) {
+  return (this.name || !asBranch) ? this.name : this.branchName;
+};
+
+Type.prototype.getSchema = Type.prototype.schema;
+
+Type.prototype.getTypeName = function () { return this.typeName; };
+
+// Implementations.
+
+/**
+ * Base primitive Avro type.
+ *
+ * Most of the primitive types share the same cloning and resolution
+ * mechanisms, provided by this class. This class also lets us conveniently
+ * check whether a type is a primitive using `instanceof`.
+ */
+function PrimitiveType(noFreeze) {
+  Type.call(this);
+  this._branchConstructor = this._createBranchConstructor();
+  if (!noFreeze) {
+    // Abstract long types can't be frozen at this stage.
+    Object.freeze(this);
+  }
+}
+util.inherits(PrimitiveType, Type);
+
+PrimitiveType.prototype._update = function (resolver, type) {
+  if (type.typeName === this.typeName) {
+    resolver._read = this._read;
+  }
+};
+
+PrimitiveType.prototype._copy = function (val) {
+  this._check(val, undefined, throwInvalidError);
+  return val;
+};
+
+PrimitiveType.prototype._deref = function () { return this.typeName; };
+
+PrimitiveType.prototype.compare = utils.compare;
+
+/** Nulls. */
+function NullType() { PrimitiveType.call(this); }
+util.inherits(NullType, PrimitiveType);
+
+NullType.prototype._check = function (val, flags, hook) {
+  var b = val === null;
+  if (!b && hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+NullType.prototype._read = function () { return null; };
+
+NullType.prototype._skip = function () {};
+
+NullType.prototype._write = function (tap, val) {
+  if (val !== null) {
+    throwInvalidError(val, this);
+  }
+};
+
+NullType.prototype._match = function () { return 0; };
+
+NullType.prototype.compare = NullType.prototype._match;
+
+NullType.prototype.typeName = 'null';
+
+NullType.prototype.random = NullType.prototype._read;
+
+/** Booleans. */
+function BooleanType() { PrimitiveType.call(this); }
+util.inherits(BooleanType, PrimitiveType);
+
+BooleanType.prototype._check = function (val, flags, hook) {
+  var b = typeof val == 'boolean';
+  if (!b && hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+BooleanType.prototype._read = function (tap) { return tap.readBoolean(); };
+
+BooleanType.prototype._skip = function (tap) { tap.skipBoolean(); };
+
+BooleanType.prototype._write = function (tap, val) {
+  if (typeof val != 'boolean') {
+    throwInvalidError(val, this);
+  }
+  tap.writeBoolean(val);
+};
+
+BooleanType.prototype._match = function (tap1, tap2) {
+  return tap1.matchBoolean(tap2);
+};
+
+BooleanType.prototype.typeName = 'boolean';
+
+BooleanType.prototype.random = function () { return RANDOM.nextBoolean(); };
+
+/** Integers. */
+function IntType() { PrimitiveType.call(this); }
+util.inherits(IntType, PrimitiveType);
+
+IntType.prototype._check = function (val, flags, hook) {
+  var b = val === (val | 0);
+  if (!b && hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+IntType.prototype._read = function (tap) { return tap.readInt(); };
+
+IntType.prototype._skip = function (tap) { tap.skipInt(); };
+
+IntType.prototype._write = function (tap, val) {
+  if (val !== (val | 0)) {
+    throwInvalidError(val, this);
+  }
+  tap.writeInt(val);
+};
+
+IntType.prototype._match = function (tap1, tap2) {
+  return tap1.matchInt(tap2);
+};
+
+IntType.prototype.typeName = 'int';
+
+IntType.prototype.random = function () { return RANDOM.nextInt(1000) | 0; };
+
+/**
+ * Longs.
+ *
+ * We can't capture all the range unfortunately since JavaScript represents all
+ * numbers internally as `double`s, so the default implementation plays safe
+ * and throws rather than potentially silently change the data. See `__with` or
+ * `AbstractLongType` below for a way to implement a custom long type.
+ */
+function LongType() { PrimitiveType.call(this); }
+util.inherits(LongType, PrimitiveType);
+
+LongType.prototype._check = function (val, flags, hook) {
+  var b = typeof val == 'number' && val % 1 === 0 && isSafeLong(val);
+  if (!b && hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+LongType.prototype._read = function (tap) {
+  var n = tap.readLong();
+  if (!isSafeLong(n)) {
+    throw new Error('potential precision loss');
+  }
+  return n;
+};
+
+LongType.prototype._skip = function (tap) { tap.skipLong(); };
+
+LongType.prototype._write = function (tap, val) {
+  if (typeof val != 'number' || val % 1 || !isSafeLong(val)) {
+    throwInvalidError(val, this);
+  }
+  tap.writeLong(val);
+};
+
+LongType.prototype._match = function (tap1, tap2) {
+  return tap1.matchLong(tap2);
+};
+
+LongType.prototype._update = function (resolver, type) {
+  switch (type.typeName) {
+    case 'int':
+      resolver._read = type._read;
+      break;
+    case 'abstract:long':
+    case 'long':
+      resolver._read = this._read; // In case `type` is an `AbstractLongType`.
+  }
+};
+
+LongType.prototype.typeName = 'long';
+
+LongType.prototype.random = function () { return RANDOM.nextInt(); };
+
+LongType.__with = function (methods, noUnpack) {
+  methods = methods || {}; // Will give a more helpful error message.
+  // We map some of the methods to a different name to be able to intercept
+  // their input and output (otherwise we wouldn't be able to perform any
+  // unpacking logic, and the type wouldn't work when nested).
+  var mapping = {
+    toBuffer: '_toBuffer',
+    fromBuffer: '_fromBuffer',
+    fromJSON: '_fromJSON',
+    toJSON: '_toJSON',
+    isValid: '_isValid',
+    compare: 'compare'
+  };
+  var type = new AbstractLongType(noUnpack);
+  Object.keys(mapping).forEach(function (name) {
+    if (methods[name] === undefined) {
+      throw new Error(f('missing method implementation: %s', name));
+    }
+    type[mapping[name]] = methods[name];
+  });
+  return Object.freeze(type);
+};
+
+/** Floats. */
+function FloatType() { PrimitiveType.call(this); }
+util.inherits(FloatType, PrimitiveType);
+
+FloatType.prototype._check = function (val, flags, hook) {
+  var b = typeof val == 'number';
+  if (!b && hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+FloatType.prototype._read = function (tap) { return tap.readFloat(); };
+
+FloatType.prototype._skip = function (tap) { tap.skipFloat(); };
+
+FloatType.prototype._write = function (tap, val) {
+  if (typeof val != 'number') {
+    throwInvalidError(val, this);
+  }
+  tap.writeFloat(val);
+};
+
+FloatType.prototype._match = function (tap1, tap2) {
+  return tap1.matchFloat(tap2);
+};
+
+FloatType.prototype._update = function (resolver, type) {
+  switch (type.typeName) {
+    case 'float':
+    case 'int':
+      resolver._read = type._read;
+      break;
+    case 'abstract:long':
+    case 'long':
+      // No need to worry about precision loss here since we're always rounding
+      // to float anyway.
+      resolver._read = function (tap) { return tap.readLong(); };
+  }
+};
+
+FloatType.prototype.typeName = 'float';
+
+FloatType.prototype.random = function () { return RANDOM.nextFloat(1e3); };
+
+/** Doubles. */
+function DoubleType() { PrimitiveType.call(this); }
+util.inherits(DoubleType, PrimitiveType);
+
+DoubleType.prototype._check = function (val, flags, hook) {
+  var b = typeof val == 'number';
+  if (!b && hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+DoubleType.prototype._read = function (tap) { return tap.readDouble(); };
+
+DoubleType.prototype._skip = function (tap) { tap.skipDouble(); };
+
+DoubleType.prototype._write = function (tap, val) {
+  if (typeof val != 'number') {
+    throwInvalidError(val, this);
+  }
+  tap.writeDouble(val);
+};
+
+DoubleType.prototype._match = function (tap1, tap2) {
+  return tap1.matchDouble(tap2);
+};
+
+DoubleType.prototype._update = function (resolver, type) {
+  switch (type.typeName) {
+    case 'double':
+    case 'float':
+    case 'int':
+      resolver._read = type._read;
+      break;
+    case 'abstract:long':
+    case 'long':
+      // Similar to inside `FloatType`, no need to worry about precision loss
+      // here since we're always rounding to double anyway.
+      resolver._read = function (tap) { return tap.readLong(); };
+  }
+};
+
+DoubleType.prototype.typeName = 'double';
+
+DoubleType.prototype.random = function () { return RANDOM.nextFloat(); };
+
+/** Strings. */
+function StringType() { PrimitiveType.call(this); }
+util.inherits(StringType, PrimitiveType);
+
+StringType.prototype._check = function (val, flags, hook) {
+  var b = typeof val == 'string';
+  if (!b && hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+StringType.prototype._read = function (tap) { return tap.readString(); };
+
+StringType.prototype._skip = function (tap) { tap.skipString(); };
+
+StringType.prototype._write = function (tap, val) {
+  if (typeof val != 'string') {
+    throwInvalidError(val, this);
+  }
+  tap.writeString(val);
+};
+
+StringType.prototype._match = function (tap1, tap2) {
+  return tap1.matchString(tap2);
+};
+
+StringType.prototype._update = function (resolver, type) {
+  switch (type.typeName) {
+    case 'bytes':
+    case 'string':
+      resolver._read = this._read;
+  }
+};
+
+StringType.prototype.typeName = 'string';
+
+StringType.prototype.random = function () {
+  return RANDOM.nextString(RANDOM.nextInt(32));
+};
+
+/**
+ * Bytes.
+ *
+ * These are represented in memory as `Buffer`s rather than binary-encoded
+ * strings. This is more efficient (when decoding/encoding from bytes, the
+ * common use-case), idiomatic, and convenient.
+ *
+ * Note the coercion in `_copy`.
+ */
+function BytesType() { PrimitiveType.call(this); }
+util.inherits(BytesType, PrimitiveType);
+
+BytesType.prototype._check = function (val, flags, hook) {
+  var b = Buffer.isBuffer(val);
+  if (!b && hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+BytesType.prototype._read = function (tap) { return tap.readBytes(); };
+
+BytesType.prototype._skip = function (tap) { tap.skipBytes(); };
+
+BytesType.prototype._write = function (tap, val) {
+  if (!Buffer.isBuffer(val)) {
+    throwInvalidError(val, this);
+  }
+  tap.writeBytes(val);
+};
+
+BytesType.prototype._match = function (tap1, tap2) {
+  return tap1.matchBytes(tap2);
+};
+
+BytesType.prototype._update = StringType.prototype._update;
+
+BytesType.prototype._copy = function (obj, opts) {
+  var buf;
+  switch ((opts && opts.coerce) | 0) {
+    case 3: // Coerce buffers to strings.
+      this._check(obj, undefined, throwInvalidError);
+      return obj.toString('binary');
+    case 2: // Coerce strings to buffers.
+      if (typeof obj != 'string') {
+        throw new Error(f('cannot coerce to buffer: %j', obj));
+      }
+      buf = utils.bufferFrom(obj, 'binary');
+      this._check(buf, undefined, throwInvalidError);
+      return buf;
+    case 1: // Coerce buffer JSON representation to buffers.
+      if (!isJsonBuffer(obj)) {
+        throw new Error(f('cannot coerce to buffer: %j', obj));
+      }
+      buf = utils.bufferFrom(obj.data);
+      this._check(buf, undefined, throwInvalidError);
+      return buf;
+    default: // Copy buffer.
+      this._check(obj, undefined, throwInvalidError);
+      return utils.bufferFrom(obj);
+  }
+};
+
+BytesType.prototype.compare = Buffer.compare;
+
+BytesType.prototype.typeName = 'bytes';
+
+BytesType.prototype.random = function () {
+  return RANDOM.nextBuffer(RANDOM.nextInt(32));
+};
+
+/** Base "abstract" Avro union type. */
+function UnionType(schema, opts) {
+  Type.call(this);
+
+  if (!Array.isArray(schema)) {
+    throw new Error(f('non-array union schema: %j', schema));
+  }
+  if (!schema.length) {
+    throw new Error('empty union');
+  }
+  this.types = Object.freeze(schema.map(function (obj) {
+    return Type.forSchema(obj, opts);
+  }));
+
+  this._branchIndices = {};
+  this.types.forEach(function (type, i) {
+    if (Type.isType(type, 'union')) {
+      throw new Error('unions cannot be directly nested');
+    }
+    var branch = type.branchName;
+    if (this._branchIndices[branch] !== undefined) {
+      throw new Error(f('duplicate union branch name: %j', branch));
+    }
+    this._branchIndices[branch] = i;
+  }, this);
+}
+util.inherits(UnionType, Type);
+
+UnionType.prototype._branchConstructor = function () {
+  throw new Error('unions cannot be directly wrapped');
+};
+
+UnionType.prototype._skip = function (tap) {
+  this.types[tap.readLong()]._skip(tap);
+};
+
+UnionType.prototype._match = function (tap1, tap2) {
+  var n1 = tap1.readLong();
+  var n2 = tap2.readLong();
+  if (n1 === n2) {
+    return this.types[n1]._match(tap1, tap2);
+  } else {
+    return n1 < n2 ? -1 : 1;
+  }
+};
+
+UnionType.prototype._deref = function (schema, opts) {
+  return this.types.map(function (t) { return t._attrs(opts); });
+};
+
+UnionType.prototype.getTypes = function () { return this.types; };
+
+/**
+ * "Natural" union type.
+ *
+ * This representation doesn't require a wrapping object and is therefore
+ * simpler and generally closer to what users expect. However it cannot be used
+ * to represent all Avro unions since some lead to ambiguities (e.g. if two
+ * number types are in the union).
+ *
+ * Currently, this union supports at most one type in each of the categories
+ * below:
+ *
+ * + `null`
+ * + `boolean`
+ * + `int`, `long`, `float`, `double`
+ * + `string`, `enum`
+ * + `bytes`, `fixed`
+ * + `array`
+ * + `map`, `record`
+ */
+function UnwrappedUnionType(schema, opts) {
+  UnionType.call(this, schema, opts);
+
+  this._dynamicBranches = null;
+  this._bucketIndices = {};
+  this.types.forEach(function (type, index) {
+    if (Type.isType(type, 'abstract', 'logical')) {
+      if (!this._dynamicBranches) {
+        this._dynamicBranches = [];
+      }
+      this._dynamicBranches.push({index: index, type: type});
+    } else {
+      var bucket = getTypeBucket(type);
+      if (this._bucketIndices[bucket] !== undefined) {
+        throw new Error(f('ambiguous unwrapped union: %j', this));
+      }
+      this._bucketIndices[bucket] = index;
+    }
+  }, this);
+
+  Object.freeze(this);
+}
+util.inherits(UnwrappedUnionType, UnionType);
+
+UnwrappedUnionType.prototype._getIndex = function (val) {
+  var index = this._bucketIndices[getValueBucket(val)];
+  if (this._dynamicBranches) {
+    // Slower path, we must run the value through all branches.
+    index = this._getBranchIndex(val, index);
+  }
+  return index;
+};
+
+UnwrappedUnionType.prototype._getBranchIndex = function (any, index) {
+  var logicalBranches = this._dynamicBranches;
+  var i, l, branch;
+  for (i = 0, l = logicalBranches.length; i < l; i++) {
+    branch = logicalBranches[i];
+    if (branch.type._check(any)) {
+      if (index === undefined) {
+        index = branch.index;
+      } else {
+        // More than one branch matches the value so we aren't guaranteed to
+        // infer the correct type. We throw rather than corrupt data. This can
+        // be fixed by "tightening" the logical types.
+        throw new Error('ambiguous conversion');
+      }
+    }
+  }
+  return index;
+};
+
+UnwrappedUnionType.prototype._check = function (val, flags, hook, path) {
+  var index = this._getIndex(val);
+  var b = index !== undefined;
+  if (b) {
+    return this.types[index]._check(val, flags, hook, path);
+  }
+  if (hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+UnwrappedUnionType.prototype._read = function (tap) {
+  var index = tap.readLong();
+  var branchType = this.types[index];
+  if (branchType) {
+    return branchType._read(tap);
+  } else {
+    throw new Error(f('invalid union index: %s', index));
+  }
+};
+
+UnwrappedUnionType.prototype._write = function (tap, val) {
+  var index = this._getIndex(val);
+  if (index === undefined) {
+    throwInvalidError(val, this);
+  }
+  tap.writeLong(index);
+  if (val !== null) {
+    this.types[index]._write(tap, val);
+  }
+};
+
+UnwrappedUnionType.prototype._update = function (resolver, type, opts) {
+  // jshint -W083
+  // (The loop exits after the first function is created.)
+  var i, l, typeResolver;
+  for (i = 0, l = this.types.length; i < l; i++) {
+    try {
+      typeResolver = this.types[i].createResolver(type, opts);
+    } catch (err) {
+      continue;
+    }
+    resolver._read = function (tap) { return typeResolver._read(tap); };
+    return;
+  }
+};
+
+UnwrappedUnionType.prototype._copy = function (val, opts) {
+  var coerce = opts && opts.coerce | 0;
+  var wrap = opts && opts.wrap | 0;
+  var index;
+  if (wrap === 2) {
+    // We are parsing a default, so always use the first branch's type.
+    index = 0;
+  } else {
+    switch (coerce) {
+      case 1:
+        // Using the `coerceBuffers` option can cause corruption and erroneous
+        // failures with unwrapped unions (in rare cases when the union also
+        // contains a record which matches a buffer's JSON representation).
+        if (isJsonBuffer(val) && this._bucketIndices.buffer !== undefined) {
+          index = this._bucketIndices.buffer;
+        } else {
+          index = this._getIndex(val);
+        }
+        break;
+      case 2:
+        // Decoding from JSON, we must unwrap the value.
+        if (val === null) {
+          index = this._bucketIndices['null'];
+        } else if (typeof val === 'object') {
+          var keys = Object.keys(val);
+          if (keys.length === 1) {
+            index = this._branchIndices[keys[0]];
+            val = val[keys[0]];
+          }
+        }
+        break;
+      default:
+        index = this._getIndex(val);
+    }
+    if (index === undefined) {
+      throwInvalidError(val, this);
+    }
+  }
+  var type = this.types[index];
+  if (val === null || wrap === 3) {
+    return type._copy(val, opts);
+  } else {
+    switch (coerce) {
+      case 3:
+        // Encoding to JSON, we wrap the value.
+        var obj = {};
+        obj[type.branchName] = type._copy(val, opts);
+        return obj;
+      default:
+        return type._copy(val, opts);
+    }
+  }
+};
+
+UnwrappedUnionType.prototype.compare = function (val1, val2) {
+  var index1 = this._getIndex(val1);
+  var index2 = this._getIndex(val2);
+  if (index1 === undefined) {
+    throwInvalidError(val1, this);
+  } else if (index2 === undefined) {
+    throwInvalidError(val2, this);
+  } else if (index1 === index2) {
+    return this.types[index1].compare(val1, val2);
+  } else {
+    return utils.compare(index1, index2);
+  }
+};
+
+UnwrappedUnionType.prototype.typeName = 'union:unwrapped';
+
+UnwrappedUnionType.prototype.random = function () {
+  var index = RANDOM.nextInt(this.types.length);
+  return this.types[index].random();
+};
+
+/**
+ * Compatible union type.
+ *
+ * Values of this type are represented in memory similarly to their JSON
+ * representation (i.e. inside an object with single key the name of the
+ * contained type).
+ *
+ * This is not ideal, but is the most efficient way to unambiguously support
+ * all unions. Here are a few reasons why the wrapping object is necessary:
+ *
+ * + Unions with multiple number types would have undefined behavior, unless
+ *   numbers are wrapped (either everywhere, leading to large performance and
+ *   convenience costs; or only when necessary inside unions, making it hard to
+ *   understand when numbers are wrapped or not).
+ * + Fixed types would have to be wrapped to be distinguished from bytes.
+ * + Using record's constructor names would work (after a slight change to use
+ *   the fully qualified name), but would mean that generic objects could no
+ *   longer be valid records (making it inconvenient to do simple things like
+ *   creating new records).
+ */
+function WrappedUnionType(schema, opts) {
+  UnionType.call(this, schema, opts);
+  Object.freeze(this);
+}
+util.inherits(WrappedUnionType, UnionType);
+
+WrappedUnionType.prototype._check = function (val, flags, hook, path) {
+  var b = false;
+  if (val === null) {
+    // Shortcut type lookup in this case.
+    b = this._branchIndices['null'] !== undefined;
+  } else if (typeof val == 'object') {
+    var keys = Object.keys(val);
+    if (keys.length === 1) {
+      // We require a single key here to ensure that writes are correct and
+      // efficient as soon as a record passes this check.
+      var name = keys[0];
+      var index = this._branchIndices[name];
+      if (index !== undefined) {
+        if (hook) {
+          // Slow path.
+          path.push(name);
+          b = this.types[index]._check(val[name], flags, hook, path);
+          path.pop();
+          return b;
+        } else {
+          return this.types[index]._check(val[name], flags);
+        }
+      }
+    }
+  }
+  if (!b && hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+WrappedUnionType.prototype._read = function (tap) {
+  var type = this.types[tap.readLong()];
+  if (!type) {
+    throw new Error(f('invalid union index'));
+  }
+  var Branch = type._branchConstructor;
+  if (Branch === null) {
+    return null;
+  } else {
+    return new Branch(type._read(tap));
+  }
+};
+
+WrappedUnionType.prototype._write = function (tap, val) {
+  var index, keys, name;
+  if (val === null) {
+    index = this._branchIndices['null'];
+    if (index === undefined) {
+      throwInvalidError(val, this);
+    }
+    tap.writeLong(index);
+  } else {
+    keys = Object.keys(val);
+    if (keys.length === 1) {
+      name = keys[0];
+      index = this._branchIndices[name];
+    }
+    if (index === undefined) {
+      throwInvalidError(val, this);
+    }
+    tap.writeLong(index);
+    this.types[index]._write(tap, val[name]);
+  }
+};
+
+WrappedUnionType.prototype._update = function (resolver, type, opts) {
+  // jshint -W083
+  // (The loop exits after the first function is created.)
+  var i, l, typeResolver, Branch;
+  for (i = 0, l = this.types.length; i < l; i++) {
+    try {
+      typeResolver = this.types[i].createResolver(type, opts);
+    } catch (err) {
+      continue;
+    }
+    Branch = this.types[i]._branchConstructor;
+    if (Branch) {
+      resolver._read = function (tap) {
+        return new Branch(typeResolver._read(tap));
+      };
+    } else {
+      resolver._read = function () { return null; };
+    }
+    return;
+  }
+};
+
+WrappedUnionType.prototype._copy = function (val, opts) {
+  var wrap = opts && opts.wrap | 0;
+  if (wrap === 2) {
+    var firstType = this.types[0];
+    // Promote into first type (used for schema defaults).
+    if (val === null && firstType.typeName === 'null') {
+      return null;
+    }
+    return new firstType._branchConstructor(firstType._copy(val, opts));
+  }
+  if (val === null && this._branchIndices['null'] !== undefined) {
+    return null;
+  }
+
+  var i, l, obj;
+  if (typeof val == 'object') {
+    var keys = Object.keys(val);
+    if (keys.length === 1) {
+      var name = keys[0];
+      i = this._branchIndices[name];
+      if (i === undefined && opts.qualifyNames) {
+        // We are a bit more flexible than in `_check` here since we have
+        // to deal with other serializers being less strict, so we fall
+        // back to looking up unqualified names.
+        var j, type;
+        for (j = 0, l = this.types.length; j < l; j++) {
+          type = this.types[j];
+          if (type.name && name === utils.unqualify(type.name)) {
+            i = j;
+            break;
+          }
+        }
+      }
+      if (i !== undefined) {
+        obj = this.types[i]._copy(val[name], opts);
+      }
+    }
+  }
+  if (wrap === 1 && obj === undefined) {
+    // Try promoting into first match (convenience, slow).
+    i = 0;
+    l = this.types.length;
+    while (i < l && obj === undefined) {
+      try {
+        obj = this.types[i]._copy(val, opts);
+      } catch (err) {
+        i++;
+      }
+    }
+  }
+  if (obj !== undefined) {
+    return wrap === 3 ? obj : new this.types[i]._branchConstructor(obj);
+  }
+  throwInvalidError(val, this);
+};
+
+WrappedUnionType.prototype.compare = function (val1, val2) {
+  var name1 = val1 === null ? 'null' : Object.keys(val1)[0];
+  var name2 = val2 === null ? 'null' : Object.keys(val2)[0];
+  var index = this._branchIndices[name1];
+  if (name1 === name2) {
+    return name1 === 'null' ?
+      0 :
+      this.types[index].compare(val1[name1], val2[name1]);
+  } else {
+    return utils.compare(index, this._branchIndices[name2]);
+  }
+};
+
+WrappedUnionType.prototype.typeName = 'union:wrapped';
+
+WrappedUnionType.prototype.random = function () {
+  var index = RANDOM.nextInt(this.types.length);
+  var type = this.types[index];
+  var Branch = type._branchConstructor;
+  if (!Branch) {
+    return null;
+  }
+  return new Branch(type.random());
+};
+
+/**
+ * Avro enum type.
+ *
+ * Represented as strings (with allowed values from the set of symbols). Using
+ * integers would be a reasonable option, but the performance boost is arguably
+ * offset by the legibility cost and the extra deviation from the JSON encoding
+ * convention.
+ *
+ * An integer representation can still be used (e.g. for compatibility with
+ * TypeScript `enum`s) by overriding the `EnumType` with a `LongType` (e.g. via
+ * `parse`'s registry).
+ */
+function EnumType(schema, opts) {
+  Type.call(this, schema, opts);
+  if (!Array.isArray(schema.symbols) || !schema.symbols.length) {
+    throw new Error(f('invalid enum symbols: %j', schema.symbols));
+  }
+  this.symbols = Object.freeze(schema.symbols.slice());
+  this._indices = {};
+  this.symbols.forEach(function (symbol, i) {
+    if (!utils.isValidName(symbol)) {
+      throw new Error(f('invalid %s symbol: %j', this, symbol));
+    }
+    if (this._indices[symbol] !== undefined) {
+      throw new Error(f('duplicate %s symbol: %j', this, symbol));
+    }
+    this._indices[symbol] = i;
+  }, this);
+  this.default = schema.default;
+  if (this.default !== undefined && this._indices[this.default] === undefined) {
+    throw new Error(f('invalid %s default: %j', this, this.default));
+  }
+  this._branchConstructor = this._createBranchConstructor();
+  Object.freeze(this);
+}
+util.inherits(EnumType, Type);
+
+EnumType.prototype._check = function (val, flags, hook) {
+  var b = this._indices[val] !== undefined;
+  if (!b && hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+EnumType.prototype._read = function (tap) {
+  var index = tap.readLong();
+  var symbol = this.symbols[index];
+  if (symbol === undefined) {
+    throw new Error(f('invalid %s enum index: %s', this.name, index));
+  }
+  return symbol;
+};
+
+EnumType.prototype._skip = function (tap) { tap.skipLong(); };
+
+EnumType.prototype._write = function (tap, val) {
+  var index = this._indices[val];
+  if (index === undefined) {
+    throwInvalidError(val, this);
+  }
+  tap.writeLong(index);
+};
+
+EnumType.prototype._match = function (tap1, tap2) {
+  return tap1.matchLong(tap2);
+};
+
+EnumType.prototype.compare = function (val1, val2) {
+  return utils.compare(this._indices[val1], this._indices[val2]);
+};
+
+EnumType.prototype._update = function (resolver, type, opts) {
+  var symbols = this.symbols;
+  if (
+    type.typeName === 'enum' &&
+    hasCompatibleName(this, type, !opts.ignoreNamespaces) &&
+    (
+      type.symbols.every(function (s) { return ~symbols.indexOf(s); }) ||
+      this.default !== undefined
+    )
+  ) {
+    resolver.symbols = type.symbols.map(function (s) {
+      return this._indices[s] === undefined ? this.default : s;
+    }, this);
+    resolver._read = type._read;
+  }
+};
+
+EnumType.prototype._copy = function (val) {
+  this._check(val, undefined, throwInvalidError);
+  return val;
+};
+
+EnumType.prototype._deref = function (schema) {
+  schema.symbols = this.symbols;
+};
+
+EnumType.prototype.getSymbols = function () { return this.symbols; };
+
+EnumType.prototype.typeName = 'enum';
+
+EnumType.prototype.random = function () {
+  return RANDOM.choice(this.symbols);
+};
+
+/** Avro fixed type. Represented simply as a `Buffer`. */
+function FixedType(schema, opts) {
+  Type.call(this, schema, opts);
+  if (schema.size !== (schema.size | 0) || schema.size < 0) {
+    throw new Error(f('invalid %s size', this.branchName));
+  }
+  this.size = schema.size | 0;
+  this._branchConstructor = this._createBranchConstructor();
+  Object.freeze(this);
+}
+util.inherits(FixedType, Type);
+
+FixedType.prototype._check = function (val, flags, hook) {
+  var b = Buffer.isBuffer(val) && val.length === this.size;
+  if (!b && hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+FixedType.prototype._read = function (tap) {
+  return tap.readFixed(this.size);
+};
+
+FixedType.prototype._skip = function (tap) {
+  tap.skipFixed(this.size);
+};
+
+FixedType.prototype._write = function (tap, val) {
+  if (!Buffer.isBuffer(val) || val.length !== this.size) {
+    throwInvalidError(val, this);
+  }
+  tap.writeFixed(val, this.size);
+};
+
+FixedType.prototype._match = function (tap1, tap2) {
+  return tap1.matchFixed(tap2, this.size);
+};
+
+FixedType.prototype.compare = Buffer.compare;
+
+FixedType.prototype._update = function (resolver, type, opts) {
+  if (
+    type.typeName === 'fixed' &&
+    this.size === type.size &&
+    hasCompatibleName(this, type, !opts.ignoreNamespaces)
+  ) {
+    resolver.size = this.size;
+    resolver._read = this._read;
+  }
+};
+
+FixedType.prototype._copy = BytesType.prototype._copy;
+
+FixedType.prototype._deref = function (schema) { schema.size = this.size; };
+
+FixedType.prototype.getSize = function () { return this.size; };
+
+FixedType.prototype.typeName = 'fixed';
+
+FixedType.prototype.random = function () {
+  return RANDOM.nextBuffer(this.size);
+};
+
+/** Avro map. Represented as vanilla objects. */
+function MapType(schema, opts) {
+  Type.call(this);
+  if (!schema.values) {
+    throw new Error(f('missing map values: %j', schema));
+  }
+  this.valuesType = Type.forSchema(schema.values, opts);
+  this._branchConstructor = this._createBranchConstructor();
+  Object.freeze(this);
+}
+util.inherits(MapType, Type);
+
+MapType.prototype._check = function (val, flags, hook, path) {
+  if (!val || typeof val != 'object' || Array.isArray(val)) {
+    if (hook) {
+      hook(val, this);
+    }
+    return false;
+  }
+
+  var keys = Object.keys(val);
+  var b = true;
+  var i, l, j, key;
+  if (hook) {
+    // Slow path.
+    j = path.length;
+    path.push('');
+    for (i = 0, l = keys.length; i < l; i++) {
+      key = path[j] = keys[i];
+      if (!this.valuesType._check(val[key], flags, hook, path)) {
+        b = false;
+      }
+    }
+    path.pop();
+  } else {
+    for (i = 0, l = keys.length; i < l; i++) {
+      if (!this.valuesType._check(val[keys[i]], flags)) {
+        return false;
+      }
+    }
+  }
+  return b;
+};
+
+MapType.prototype._read = function (tap) {
+  var values = this.valuesType;
+  var val = {};
+  var n;
+  while ((n = readArraySize(tap))) {
+    while (n--) {
+      var key = tap.readString();
+      val[key] = values._read(tap);
+    }
+  }
+  return val;
+};
+
+MapType.prototype._skip = function (tap) {
+  var values = this.valuesType;
+  var len, n;
+  while ((n = tap.readLong())) {
+    if (n < 0) {
+      len = tap.readLong();
+      tap.pos += len;
+    } else {
+      while (n--) {
+        tap.skipString();
+        values._skip(tap);
+      }
+    }
+  }
+};
+
+MapType.prototype._write = function (tap, val) {
+  if (!val || typeof val != 'object' || Array.isArray(val)) {
+    throwInvalidError(val, this);
+  }
+
+  var values = this.valuesType;
+  var keys = Object.keys(val);
+  var n = keys.length;
+  var i, key;
+  if (n) {
+    tap.writeLong(n);
+    for (i = 0; i < n; i++) {
+      key = keys[i];
+      tap.writeString(key);
+      values._write(tap, val[key]);
+    }
+  }
+  tap.writeLong(0);
+};
+
+MapType.prototype._match = function () {
+  throw new Error('maps cannot be compared');
+};
+
+MapType.prototype._update = function (rsv, type, opts) {
+  if (type.typeName === 'map') {
+    rsv.valuesType = this.valuesType.createResolver(type.valuesType, opts);
+    rsv._read = this._read;
+  }
+};
+
+MapType.prototype._copy = function (val, opts) {
+  if (val && typeof val == 'object' && !Array.isArray(val)) {
+    var values = this.valuesType;
+    var keys = Object.keys(val);
+    var i, l, key;
+    var copy = {};
+    for (i = 0, l = keys.length; i < l; i++) {
+      key = keys[i];
+      copy[key] = values._copy(val[key], opts);
+    }
+    return copy;
+  }
+  throwInvalidError(val, this);
+};
+
+MapType.prototype.compare = MapType.prototype._match;
+
+MapType.prototype.typeName = 'map';
+
+MapType.prototype.getValuesType = function () { return this.valuesType; };
+
+MapType.prototype.random = function () {
+  var val = {};
+  var i, l;
+  for (i = 0, l = RANDOM.nextInt(10); i < l; i++) {
+    val[RANDOM.nextString(RANDOM.nextInt(20))] = this.valuesType.random();
+  }
+  return val;
+};
+
+MapType.prototype._deref = function (schema, opts) {
+  schema.values = this.valuesType._attrs(opts);
+};
+
+/** Avro array. Represented as vanilla arrays. */
+function ArrayType(schema, opts) {
+  Type.call(this);
+  if (!schema.items) {
+    throw new Error(f('missing array items: %j', schema));
+  }
+  this.itemsType = Type.forSchema(schema.items, opts);
+  this._branchConstructor = this._createBranchConstructor();
+  Object.freeze(this);
+}
+util.inherits(ArrayType, Type);
+
+ArrayType.prototype._check = function (val, flags, hook, path) {
+  if (!Array.isArray(val)) {
+    if (hook) {
+      hook(val, this);
+    }
+    return false;
+  }
+  var items = this.itemsType;
+  var b = true;
+  var i, l, j;
+  if (hook) {
+    // Slow path.
+    j = path.length;
+    path.push('');
+    for (i = 0, l = val.length; i < l; i++) {
+      path[j] = '' + i;
+      if (!items._check(val[i], flags, hook, path)) {
+        b = false;
+      }
+    }
+    path.pop();
+  } else {
+    for (i = 0, l = val.length; i < l; i++) {
+      if (!items._check(val[i], flags)) {
+        return false;
+      }
+    }
+  }
+  return b;
+};
+
+ArrayType.prototype._read = function (tap) {
+  var items = this.itemsType;
+  var i = 0;
+  var val, n;
+  while ((n = tap.readLong())) {
+    if (n < 0) {
+      n = -n;
+      tap.skipLong(); // Skip size.
+    }
+    // Initializing the array on the first batch gives a ~10% speedup. See
+    // https://github.com/mtth/avsc/pull/338 for more context.
+    val = val || new Array(n)
+    while (n--) {
+      val[i++] = items._read(tap);
+    }
+  }
+  return val || [];
+};
+
+ArrayType.prototype._skip = function (tap) {
+  var items = this.itemsType;
+  var len, n;
+  while ((n = tap.readLong())) {
+    if (n < 0) {
+      len = tap.readLong();
+      tap.pos += len;
+    } else {
+      while (n--) {
+        items._skip(tap);
+      }
+    }
+  }
+};
+
+ArrayType.prototype._write = function (tap, val) {
+  if (!Array.isArray(val)) {
+    throwInvalidError(val, this);
+  }
+  var items = this.itemsType;
+  var n = val.length;
+  var i;
+  if (n) {
+    tap.writeLong(n);
+    for (i = 0; i < n; i++) {
+      items._write(tap, val[i]);
+    }
+  }
+  tap.writeLong(0);
+};
+
+ArrayType.prototype._match = function (tap1, tap2) {
+  var n1 = tap1.readLong();
+  var n2 = tap2.readLong();
+  var f;
+  while (n1 && n2) {
+    f = this.itemsType._match(tap1, tap2);
+    if (f) {
+      return f;
+    }
+    if (!--n1) {
+      n1 = readArraySize(tap1);
+    }
+    if (!--n2) {
+      n2 = readArraySize(tap2);
+    }
+  }
+  return utils.compare(n1, n2);
+};
+
+ArrayType.prototype._update = function (resolver, type, opts) {
+  if (type.typeName === 'array') {
+    resolver.itemsType = this.itemsType.createResolver(type.itemsType, opts);
+    resolver._read = this._read;
+  }
+};
+
+ArrayType.prototype._copy = function (val, opts) {
+  if (!Array.isArray(val)) {
+    throwInvalidError(val, this);
+  }
+  var items = new Array(val.length);
+  var i, l;
+  for (i = 0, l = val.length; i < l; i++) {
+    items[i] = this.itemsType._copy(val[i], opts);
+  }
+  return items;
+};
+
+ArrayType.prototype._deref = function (schema, opts) {
+  schema.items = this.itemsType._attrs(opts);
+};
+
+ArrayType.prototype.compare = function (val1, val2) {
+  var n1 = val1.length;
+  var n2 = val2.length;
+  var i, l, f;
+  for (i = 0, l = Math.min(n1, n2); i < l; i++) {
+    if ((f = this.itemsType.compare(val1[i], val2[i]))) {
+      return f;
+    }
+  }
+  return utils.compare(n1, n2);
+};
+
+ArrayType.prototype.getItemsType = function () { return this.itemsType; };
+
+ArrayType.prototype.typeName = 'array';
+
+ArrayType.prototype.random = function () {
+  var arr = [];
+  var i, l;
+  for (i = 0, l = RANDOM.nextInt(10); i < l; i++) {
+    arr.push(this.itemsType.random());
+  }
+  return arr;
+};
+
+/**
+ * Avro record.
+ *
+ * Values are represented as instances of a programmatically generated
+ * constructor (similar to a "specific record"), available via the
+ * `getRecordConstructor` method. This "specific record class" gives
+ * significant speedups over using generics objects.
+ *
+ * Note that vanilla objects are still accepted as valid as long as their
+ * fields match (this makes it much more convenient to do simple things like
+ * update nested records).
+ *
+ * This type is also used for errors (similar, except for the extra `Error`
+ * constructor call) and for messages (see comment below).
+ */
+function RecordType(schema, opts) {
+  // Force creation of the options object in case we need to register this
+  // record's name.
+  opts = opts || {};
+
+  // Save the namespace to restore it as we leave this record's scope.
+  var namespace = opts.namespace;
+  if (schema.namespace !== undefined) {
+    opts.namespace = schema.namespace;
+  } else if (schema.name) {
+    // Fully qualified names' namespaces are used when no explicit namespace
+    // attribute was specified.
+    var ns = utils.impliedNamespace(schema.name);
+    if (ns !== undefined) {
+      opts.namespace = ns;
+    }
+  }
+  Type.call(this, schema, opts);
+
+  if (!Array.isArray(schema.fields)) {
+    throw new Error(f('non-array record fields: %j', schema.fields));
+  }
+  if (utils.hasDuplicates(schema.fields, function (f) { return f.name; })) {
+    throw new Error(f('duplicate field name: %j', schema.fields));
+  }
+  this._fieldsByName = {};
+  this.fields = Object.freeze(schema.fields.map(function (f) {
+    var field = new Field(f, opts);
+    this._fieldsByName[field.name] = field;
+    return field;
+  }, this));
+  this._branchConstructor = this._createBranchConstructor();
+  this._isError = schema.type === 'error';
+  this.recordConstructor = this._createConstructor(
+    opts.errorStackTraces,
+    opts.omitRecordMethods
+  );
+  this._read = this._createReader();
+  this._skip = this._createSkipper();
+  this._write = this._createWriter();
+  this._check = this._createChecker();
+
+  opts.namespace = namespace;
+  Object.freeze(this);
+}
+util.inherits(RecordType, Type);
+
+RecordType.prototype._getConstructorName = function () {
+  return this.name ?
+    utils.capitalize(utils.unqualify(this.name)) :
+    this._isError ? 'Error$' : 'Record$';
+};
+
+RecordType.prototype._createConstructor = function (errorStack, plainRecords) {
+  // jshint -W054
+  var outerArgs = [];
+  var innerArgs = [];
+  var ds = []; // Defaults.
+  var innerBody = '';
+  var i, l, field, name, defaultValue, hasDefault, stackField;
+  for (i = 0, l = this.fields.length; i < l; i++) {
+    field = this.fields[i];
+    defaultValue = field.defaultValue;
+    hasDefault = defaultValue() !== undefined;
+    name = field.name;
+    if (
+      errorStack && this._isError && name === 'stack' &&
+      Type.isType(field.type, 'string') && !hasDefault
+    ) {
+      // We keep track of whether we've encountered a valid stack field (in
+      // particular, without a default) to populate a stack trace below.
+      stackField = field;
+    }
+    innerArgs.push('v' + i);
+    innerBody += '  ';
+    if (!hasDefault) {
+      innerBody += 'this.' + name + ' = v' + i + ';\n';
+    } else {
+      innerBody += 'if (v' + i + ' === undefined) { ';
+      innerBody += 'this.' + name + ' = d' + ds.length + '(); ';
+      innerBody += '} else { this.' + name + ' = v' + i + '; }\n';
+      outerArgs.push('d' + ds.length);
+      ds.push(defaultValue);
+    }
+  }
+  if (stackField) {
+    // We should populate a stack trace.
+    innerBody += '  if (this.stack === undefined) { ';
+    /* istanbul ignore else */
+    if (typeof Error.captureStackTrace == 'function') {
+      // v8 runtimes, the easy case.
+      innerBody += 'Error.captureStackTrace(this, this.constructor);';
+    } else {
+      // A few other runtimes (e.g. SpiderMonkey), might not work everywhere.
+      innerBody += 'this.stack = Error().stack;';
+    }
+    innerBody += ' }\n';
+  }
+  var outerBody = 'return function ' + this._getConstructorName() + '(';
+  outerBody += innerArgs.join() + ') {\n' + innerBody + '};';
+  var Record = new Function(outerArgs.join(), outerBody).apply(undefined, ds);
+  if (plainRecords) {
+    return Record;
+  }
+
+  var self = this;
+  Record.getType = function () { return self; };
+  Record.type = self;
+  if (this._isError) {
+    util.inherits(Record, Error);
+    Record.prototype.name = this._getConstructorName();
+  }
+  Record.prototype.clone = function (o) { return self.clone(this, o); };
+  Record.prototype.compare = function (v) { return self.compare(this, v); };
+  Record.prototype.isValid = function (o) { return self.isValid(this, o); };
+  Record.prototype.toBuffer = function () { return self.toBuffer(this); };
+  Record.prototype.toString = function () { return self.toString(this); };
+  Record.prototype.wrap = function () { return self.wrap(this); };
+  Record.prototype.wrapped = Record.prototype.wrap; // Deprecated.
+  return Record;
+};
+
+RecordType.prototype._createChecker = function () {
+  // jshint -W054
+  var names = [];
+  var values = [];
+  var name = this._getConstructorName();
+  var body = 'return function check' + name + '(v, f, h, p) {\n';
+  body += '  if (\n';
+  body += '    v === null ||\n';
+  body += '    typeof v != \'object\' ||\n';
+  body += '    (f && !this._checkFields(v))\n';
+  body += '  ) {\n';
+  body += '    if (h) { h(v, this); }\n';
+  body += '    return false;\n';
+  body += '  }\n';
+  if (!this.fields.length) {
+    // Special case, empty record. We handle this directly.
+    body += '  return true;\n';
+  } else {
+    for (i = 0, l = this.fields.length; i < l; i++) {
+      field = this.fields[i];
+      names.push('t' + i);
+      values.push(field.type);
+      if (field.defaultValue() !== undefined) {
+        body += '  var v' + i + ' = v.' + field.name + ';\n';
+      }
+    }
+    body += '  if (h) {\n';
+    body += '    var b = 1;\n';
+    body += '    var j = p.length;\n';
+    body += '    p.push(\'\');\n';
+    var i, l, field;
+    for (i = 0, l = this.fields.length; i < l; i++) {
+      field = this.fields[i];
+      body += '    p[j] = \'' + field.name + '\';\n';
+      body += '    b &= ';
+      if (field.defaultValue() === undefined) {
+        body += 't' + i + '._check(v.' + field.name + ', f, h, p);\n';
+      } else {
+        body += 'v' + i + ' === undefined || ';
+        body += 't' + i + '._check(v' + i + ', f, h, p);\n';
+      }
+    }
+    body += '    p.pop();\n';
+    body += '    return !!b;\n';
+    body += '  } else {\n    return (\n      ';
+    body += this.fields.map(function (field, i) {
+      return field.defaultValue() === undefined ?
+        't' + i + '._check(v.' + field.name + ', f)' :
+        '(v' + i + ' === undefined || t' + i + '._check(v' + i + ', f))';
+    }).join(' &&\n      ');
+    body += '\n    );\n  }\n';
+  }
+  body += '};';
+  return new Function(names.join(), body).apply(undefined, values);
+};
+
+RecordType.prototype._createReader = function () {
+  // jshint -W054
+  var names = [];
+  var values = [this.recordConstructor];
+  var i, l;
+  for (i = 0, l = this.fields.length; i < l; i++) {
+    names.push('t' + i);
+    values.push(this.fields[i].type);
+  }
+  var name = this._getConstructorName();
+  var body = 'return function read' + name + '(t) {\n';
+  body += '  return new ' + name + '(\n    ';
+  body += names.map(function (s) { return s + '._read(t)'; }).join(',\n    ');
+  body += '\n  );\n};';
+  names.unshift(name);
+  // We can do this since the JS spec guarantees that function arguments are
+  // evaluated from left to right.
+  return new Function(names.join(), body).apply(undefined, values);
+};
+
+RecordType.prototype._createSkipper = function () {
+  // jshint -W054
+  var args = [];
+  var body = 'return function skip' + this._getConstructorName() + '(t) {\n';
+  var values = [];
+  var i, l;
+  for (i = 0, l = this.fields.length; i < l; i++) {
+    args.push('t' + i);
+    values.push(this.fields[i].type);
+    body += '  t' + i + '._skip(t);\n';
+  }
+  body += '}';
+  return new Function(args.join(), body).apply(undefined, values);
+};
+
+RecordType.prototype._createWriter = function () {
+  // jshint -W054
+  // We still do default handling here, in case a normal JS object is passed.
+  var args = [];
+  var name = this._getConstructorName();
+  var body = 'return function write' + name + '(t, v) {\n';
+  var values = [];
+  var i, l, field, value;
+  for (i = 0, l = this.fields.length; i < l; i++) {
+    field = this.fields[i];
+    args.push('t' + i);
+    values.push(field.type);
+    body += '  ';
+    if (field.defaultValue() === undefined) {
+      body += 't' + i + '._write(t, v.' + field.name + ');\n';
+    } else {
+      value = field.type.toBuffer(field.defaultValue()).toString('binary');
+      // Convert the default value to a binary string ahead of time. We aren't
+      // converting it to a buffer to avoid retaining too much memory. If we
+      // had our own buffer pool, this could be an idea in the future.
+      args.push('d' + i);
+      values.push(value);
+      body += 'var v' + i + ' = v.' + field.name + ';\n';
+      body += 'if (v' + i + ' === undefined) {\n';
+      body += '    t.writeBinary(d' + i + ', ' + value.length + ');\n';
+      body += '  } else {\n    t' + i + '._write(t, v' + i + ');\n  }\n';
+    }
+  }
+  body += '}';
+  return new Function(args.join(), body).apply(undefined, values);
+};
+
+RecordType.prototype._update = function (resolver, type, opts) {
+  // jshint -W054
+  if (!hasCompatibleName(this, type, !opts.ignoreNamespaces)) {
+    throw new Error(f('no alias found for %s', type.name));
+  }
+
+  var rFields = this.fields;
+  var wFields = type.fields;
+  var wFieldsMap = utils.toMap(wFields, function (f) { return f.name; });
+
+  var innerArgs = []; // Arguments for reader constructor.
+  var resolvers = {}; // Resolvers keyed by writer field name.
+  var i, j, field, name, names, matches, fieldResolver;
+  for (i = 0; i < rFields.length; i++) {
+    field = rFields[i];
+    names = getAliases(field);
+    matches = [];
+    for (j = 0; j < names.length; j++) {
+      name = names[j];
+      if (wFieldsMap[name]) {
+        matches.push(name);
+      }
+    }
+    if (matches.length > 1) {
+      throw new Error(
+        f('ambiguous aliasing for %s.%s (%s)', type.name, field.name, matches)
+      );
+    }
+    if (!matches.length) {
+      if (field.defaultValue() === undefined) {
+        throw new Error(
+          f('no matching field for default-less %s.%s', type.name, field.name)
+        );
+      }
+      innerArgs.push('undefined');
+    } else {
+      name = matches[0];
+      fieldResolver = {
+        resolver: field.type.createResolver(wFieldsMap[name].type, opts),
+        name: '_' + field.name, // Reader field name.
+      };
+      if (!resolvers[name]) {
+        resolvers[name] = [fieldResolver];
+      } else {
+        resolvers[name].push(fieldResolver);
+      }
+      innerArgs.push(fieldResolver.name);
+    }
+  }
+
+  // See if we can add a bypass for unused fields at the end of the record.
+  var lazyIndex = -1;
+  i = wFields.length;
+  while (i && resolvers[wFields[--i].name] === undefined) {
+    lazyIndex = i;
+  }
+
+  var uname = this._getConstructorName();
+  var args = [uname];
+  var values = [this.recordConstructor];
+  var body = '  return function read' + uname + '(t, b) {\n';
+  for (i = 0; i < wFields.length; i++) {
+    if (i === lazyIndex) {
+      body += '  if (!b) {\n';
+    }
+    field = type.fields[i];
+    name = field.name;
+    if (resolvers[name] === undefined) {
+      body += (~lazyIndex && i >= lazyIndex) ? '    ' : '  ';
+      args.push('r' + i);
+      values.push(field.type);
+      body += 'r' + i + '._skip(t);\n';
+    } else {
+      j = resolvers[name].length;
+      while (j--) {
+        body += (~lazyIndex && i >= lazyIndex) ? '    ' : '  ';
+        args.push('r' + i + 'f' + j);
+        fieldResolver = resolvers[name][j];
+        values.push(fieldResolver.resolver);
+        body += 'var ' + fieldResolver.name + ' = ';
+        body += 'r' + i + 'f' + j + '._' + (j ? 'peek' : 'read') + '(t);\n';
+      }
+    }
+  }
+  if (~lazyIndex) {
+    body += '  }\n';
+  }
+  body += '  return new ' + uname + '(' + innerArgs.join() + ');\n};';
+
+  resolver._read = new Function(args.join(), body).apply(undefined, values);
+};
+
+RecordType.prototype._match = function (tap1, tap2) {
+  var fields = this.fields;
+  var i, l, field, order, type;
+  for (i = 0, l = fields.length; i < l; i++) {
+    field = fields[i];
+    order = field._order;
+    type = field.type;
+    if (order) {
+      order *= type._match(tap1, tap2);
+      if (order) {
+        return order;
+      }
+    } else {
+      type._skip(tap1);
+      type._skip(tap2);
+    }
+  }
+  return 0;
+};
+
+RecordType.prototype._checkFields = function (obj) {
+  var keys = Object.keys(obj);
+  var i, l;
+  for (i = 0, l = keys.length; i < l; i++) {
+    if (!this._fieldsByName[keys[i]]) {
+      return false;
+    }
+  }
+  return true;
+};
+
+RecordType.prototype._copy = function (val, opts) {
+  // jshint -W058
+  var hook = opts && opts.fieldHook;
+  var values = [undefined];
+  var i, l, field, value;
+  for (i = 0, l = this.fields.length; i < l; i++) {
+    field = this.fields[i];
+    value = val[field.name];
+    if (value === undefined && field.hasOwnProperty('defaultValue')) {
+      value = field.defaultValue();
+    }
+    if ((opts && !opts.skip) || value !== undefined) {
+      value = field.type._copy(value, opts);
+    }
+    if (hook) {
+      value = hook(field, value, this);
+    }
+    values.push(value);
+  }
+  var Record = this.recordConstructor;
+  return new (Record.bind.apply(Record, values))();
+};
+
+RecordType.prototype._deref = function (schema, opts) {
+  schema.fields = this.fields.map(function (field) {
+    var fieldType = field.type;
+    var fieldSchema = {
+      name: field.name,
+      type: fieldType._attrs(opts)
+    };
+    if (opts.exportAttrs) {
+      var val = field.defaultValue();
+      if (val !== undefined) {
+        // We must both unwrap all unions and coerce buffers to strings.
+        fieldSchema['default'] = fieldType._copy(val, {coerce: 3, wrap: 3});
+      }
+      var fieldOrder = field.order;
+      if (fieldOrder !== 'ascending') {
+        fieldSchema.order = fieldOrder;
+      }
+      var fieldAliases = field.aliases;
+      if (fieldAliases.length) {
+        fieldSchema.aliases = fieldAliases;
+      }
+      var fieldDoc = field.doc;
+      if (fieldDoc !== undefined) {
+        fieldSchema.doc = fieldDoc;
+      }
+    }
+    return fieldSchema;
+  });
+};
+
+RecordType.prototype.compare = function (val1, val2) {
+  var fields = this.fields;
+  var i, l, field, name, order, type;
+  for (i = 0, l = fields.length; i < l; i++) {
+    field = fields[i];
+    name = field.name;
+    order = field._order;
+    type = field.type;
+    if (order) {
+      order *= type.compare(val1[name], val2[name]);
+      if (order) {
+        return order;
+      }
+    }
+  }
+  return 0;
+};
+
+RecordType.prototype.random = function () {
+  // jshint -W058
+  var fields = this.fields.map(function (f) { return f.type.random(); });
+  fields.unshift(undefined);
+  var Record = this.recordConstructor;
+  return new (Record.bind.apply(Record, fields))();
+};
+
+RecordType.prototype.field = function (name) {
+  return this._fieldsByName[name];
+};
+
+RecordType.prototype.getField = RecordType.prototype.field;
+
+RecordType.prototype.getFields = function () { return this.fields; };
+
+RecordType.prototype.getRecordConstructor = function () {
+  return this.recordConstructor;
+};
+
+Object.defineProperty(RecordType.prototype, 'typeName', {
+  enumerable: true,
+  get: function () { return this._isError ? 'error' : 'record'; }
+});
+
+/** Derived type abstract class. */
+function LogicalType(schema, opts) {
+  this._logicalTypeName = schema.logicalType;
+  Type.call(this);
+  LOGICAL_TYPE = this;
+  try {
+    this._underlyingType = Type.forSchema(schema, opts);
+  } finally {
+    LOGICAL_TYPE = null;
+    // Remove the underlying type now that we're done instantiating. Note that
+    // in some (rare) cases, it might not have been inserted; for example, if
+    // this constructor was manually called with an already instantiated type.
+    var l = UNDERLYING_TYPES.length;
+    if (l && UNDERLYING_TYPES[l - 1][0] === this) {
+      UNDERLYING_TYPES.pop();
+    }
+  }
+  // We create a separate branch constructor for logical types to keep them
+  // monomorphic.
+  if (Type.isType(this.underlyingType, 'union')) {
+    this._branchConstructor = this.underlyingType._branchConstructor;
+  } else {
+    this._branchConstructor = this.underlyingType._createBranchConstructor();
+  }
+  // We don't freeze derived types to allow arbitrary properties. Implementors
+  // can still do so in the subclass' constructor at their convenience.
+}
+util.inherits(LogicalType, Type);
+
+Object.defineProperty(LogicalType.prototype, 'typeName', {
+  enumerable: true,
+  get: function () { return 'logical:' + this._logicalTypeName; }
+});
+
+Object.defineProperty(LogicalType.prototype, 'underlyingType', {
+  enumerable: true,
+  get: function () {
+    if (this._underlyingType) {
+      return this._underlyingType;
+    }
+    // If the field wasn't present, it means the logical type isn't complete
+    // yet: we're waiting on its underlying type to be fully instantiated. In
+    // this case, it will be present in the `UNDERLYING_TYPES` array.
+    var i, l, arr;
+    for (i = 0, l = UNDERLYING_TYPES.length; i < l; i++) {
+      arr = UNDERLYING_TYPES[i];
+      if (arr[0] === this) {
+        return arr[1];
+      }
+    }
+  }
+});
+
+LogicalType.prototype.getUnderlyingType = function () {
+  return this.underlyingType;
+};
+
+LogicalType.prototype._read = function (tap) {
+  return this._fromValue(this.underlyingType._read(tap));
+};
+
+LogicalType.prototype._write = function (tap, any) {
+  this.underlyingType._write(tap, this._toValue(any));
+};
+
+LogicalType.prototype._check = function (any, flags, hook, path) {
+  try {
+    var val = this._toValue(any);
+  } catch (err) {
+    // Handled below.
+  }
+  if (val === undefined) {
+    if (hook) {
+      hook(any, this);
+    }
+    return false;
+  }
+  return this.underlyingType._check(val, flags, hook, path);
+};
+
+LogicalType.prototype._copy = function (any, opts) {
+  var type = this.underlyingType;
+  switch (opts && opts.coerce) {
+    case 3: // To string.
+      return type._copy(this._toValue(any), opts);
+    case 2: // From string.
+      return this._fromValue(type._copy(any, opts));
+    default: // Normal copy.
+      return this._fromValue(type._copy(this._toValue(any), opts));
+  }
+};
+
+LogicalType.prototype._update = function (resolver, type, opts) {
+  var _fromValue = this._resolve(type, opts);
+  if (_fromValue) {
+    resolver._read = function (tap) { return _fromValue(type._read(tap)); };
+  }
+};
+
+LogicalType.prototype.compare = function (obj1, obj2) {
+  var val1 = this._toValue(obj1);
+  var val2 = this._toValue(obj2);
+  return this.underlyingType.compare(val1, val2);
+};
+
+LogicalType.prototype.random = function () {
+  return this._fromValue(this.underlyingType.random());
+};
+
+LogicalType.prototype._deref = function (schema, opts) {
+  var type = this.underlyingType;
+  var isVisited = type.name !== undefined && opts.derefed[type.name];
+  schema = type._attrs(opts);
+  if (!isVisited && opts.exportAttrs) {
+    if (typeof schema == 'string') {
+      schema = {type: schema};
+    }
+    schema.logicalType = this._logicalTypeName;
+    this._export(schema);
+  }
+  return schema;
+};
+
+LogicalType.prototype._skip = function (tap) {
+  this.underlyingType._skip(tap);
+};
+
+// Unlike the other methods below, `_export` has a reasonable default which we
+// can provide (not exporting anything).
+LogicalType.prototype._export = function (/* schema */) {};
+
+// Methods to be implemented.
+LogicalType.prototype._fromValue = utils.abstractFunction;
+LogicalType.prototype._toValue = utils.abstractFunction;
+LogicalType.prototype._resolve = utils.abstractFunction;
+
+
+// General helpers.
+
+/**
+ * Customizable long.
+ *
+ * This allows support of arbitrarily large long (e.g. larger than
+ * `Number.MAX_SAFE_INTEGER`). See `LongType.__with` method above. Note that we
+ * can't use a logical type because we need a "lower-level" hook here: passing
+ * through through the standard long would cause a loss of precision.
+ */
+function AbstractLongType(noUnpack) {
+  this._concreteTypeName = 'long';
+  PrimitiveType.call(this, true);
+  // Note that this type "inherits" `LongType` (i.e. gain its prototype
+  // methods) but only "subclasses" `PrimitiveType` to avoid being prematurely
+  // frozen.
+  this._noUnpack = !!noUnpack;
+}
+util.inherits(AbstractLongType, LongType);
+
+AbstractLongType.prototype.typeName = 'abstract:long';
+
+AbstractLongType.prototype._check = function (val, flags, hook) {
+  var b = this._isValid(val);
+  if (!b && hook) {
+    hook(val, this);
+  }
+  return b;
+};
+
+AbstractLongType.prototype._read = function (tap) {
+  var buf, pos;
+  if (this._noUnpack) {
+    pos = tap.pos;
+    tap.skipLong();
+    buf = tap.buf.slice(pos, tap.pos);
+  } else {
+    buf = tap.unpackLongBytes(tap);
+  }
+  if (tap.isValid()) {
+    return this._fromBuffer(buf);
+  }
+};
+
+AbstractLongType.prototype._write = function (tap, val) {
+  if (!this._isValid(val)) {
+    throwInvalidError(val, this);
+  }
+  var buf = this._toBuffer(val);
+  if (this._noUnpack) {
+    tap.writeFixed(buf);
+  } else {
+    tap.packLongBytes(buf);
+  }
+};
+
+AbstractLongType.prototype._copy = function (val, opts) {
+  switch (opts && opts.coerce) {
+    case 3: // To string.
+      return this._toJSON(val);
+    case 2: // From string.
+      return this._fromJSON(val);
+    default: // Normal copy.
+      // Slow but guarantees most consistent results. Faster alternatives would
+      // require assumptions on the long class used (e.g. immutability).
+      return this._fromJSON(this._toJSON(val));
+  }
+};
+
+AbstractLongType.prototype._deref = function () { return 'long'; };
+
+AbstractLongType.prototype._update = function (resolver, type) {
+  var self = this;
+  switch (type.typeName) {
+    case 'int':
+      resolver._read = function (tap) {
+        return self._fromJSON(type._read(tap));
+      };
+      break;
+    case 'abstract:long':
+    case 'long':
+      resolver._read = function (tap) { return self._read(tap); };
+  }
+};
+
+AbstractLongType.prototype.random = function () {
+  return this._fromJSON(LongType.prototype.random());
+};
+
+// Methods to be implemented by the user.
+AbstractLongType.prototype._fromBuffer = utils.abstractFunction;
+AbstractLongType.prototype._toBuffer = utils.abstractFunction;
+AbstractLongType.prototype._fromJSON = utils.abstractFunction;
+AbstractLongType.prototype._toJSON = utils.abstractFunction;
+AbstractLongType.prototype._isValid = utils.abstractFunction;
+AbstractLongType.prototype.compare = utils.abstractFunction;
+
+/** A record field. */
+function Field(schema, opts) {
+  var name = schema.name;
+  if (typeof name != 'string' || !utils.isValidName(name)) {
+    throw new Error(f('invalid field name: %s', name));
+  }
+
+  this.name = name;
+  this.type = Type.forSchema(schema.type, opts);
+  this.aliases = schema.aliases || [];
+  this.doc = schema.doc !== undefined ? '' + schema.doc : undefined;
+
+  this._order = (function (order) {
+    switch (order) {
+      case 'ascending':
+        return 1;
+      case 'descending':
+        return -1;
+      case 'ignore':
+        return 0;
+      default:
+        throw new Error(f('invalid order: %j', order));
+    }
+  })(schema.order === undefined ? 'ascending' : schema.order);
+
+  var value = schema['default'];
+  if (value !== undefined) {
+    // We need to convert defaults back to a valid format (unions are
+    // disallowed in default definitions, only the first type of each union is
+    // allowed instead).
+    // http://apache-avro.679487.n3.nabble.com/field-union-default-in-Java-td1175327.html
+    var type = this.type;
+    var val = type._copy(value, {coerce: 2, wrap: 2});
+    // The clone call above will throw an error if the default is invalid.
+    if (isPrimitive(type.typeName) && type.typeName !== 'bytes') {
+      // These are immutable.
+      this.defaultValue = function () { return val; };
+    } else {
+      this.defaultValue = function () { return type._copy(val); };
+    }
+  }
+
+  Object.freeze(this);
+}
+
+Field.prototype.defaultValue = function () {}; // Undefined default.
+
+Object.defineProperty(Field.prototype, 'order', {
+  enumerable: true,
+  get: function () {
+    return ['descending', 'ignore', 'ascending'][this._order + 1];
+  }
+});
+
+Field.prototype.getAliases = function () { return this.aliases; };
+
+Field.prototype.getDefault = Field.prototype.defaultValue;
+
+Field.prototype.getName = function () { return this.name; };
+
+Field.prototype.getOrder = function () { return this.order; };
+
+Field.prototype.getType = function () { return this.type; };
+
+/**
+ * Resolver to read a writer's schema as a new schema.
+ *
+ * @param readerType {Type} The type to convert to.
+ */
+function Resolver(readerType) {
+  // Add all fields here so that all resolvers share the same hidden class.
+  this._readerType = readerType;
+  this._read = null;
+  this.itemsType = null;
+  this.size = 0;
+  this.symbols = null;
+  this.valuesType = null;
+}
+
+Resolver.prototype._peek = Type.prototype._peek;
+
+Resolver.prototype.inspect = function () { return '<Resolver>'; };
+
+/** Mutable hash container. */
+function Hash() {
+  this.str = undefined;
+}
+
+/**
+ * Read a value from a tap.
+ *
+ * @param type {Type} The type to decode.
+ * @param tap {Tap} The tap to read from. No checks are performed here.
+ * @param resolver {Resolver} Optional resolver. It must match the input type.
+ * @param lazy {Boolean} Skip trailing fields when using a resolver.
+ */
+function readValue(type, tap, resolver, lazy) {
+  if (resolver) {
+    if (resolver._readerType !== type) {
+      throw new Error('invalid resolver');
+    }
+    return resolver._read(tap, lazy);
+  } else {
+    return type._read(tap);
+  }
+}
+
+/**
+ * Get all aliases for a type (including its name).
+ *
+ * @param obj {Type|Object} Typically a type or a field. Its aliases property
+ * must exist and be an array.
+ */
+function getAliases(obj) {
+  var names = {};
+  if (obj.name) {
+    names[obj.name] = true;
+  }
+  var aliases = obj.aliases;
+  var i, l;
+  for (i = 0, l = aliases.length; i < l; i++) {
+    names[aliases[i]] = true;
+  }
+  return Object.keys(names);
+}
+
+/** Checks if a type can be read as another based on name resolution rules. */
+function hasCompatibleName(reader, writer, strict) {
+  if (!writer.name) {
+    return true;
+  }
+  var name = strict ? writer.name : utils.unqualify(writer.name);
+  var aliases = getAliases(reader);
+  var i, l, alias;
+  for (i = 0, l = aliases.length; i < l; i++) {
+    alias = aliases[i];
+    if (!strict) {
+      alias = utils.unqualify(alias);
+    }
+    if (alias === name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Check whether a type's name is a primitive.
+ *
+ * @param name {String} Type name (e.g. `'string'`, `'array'`).
+ */
+function isPrimitive(typeName) {
+  // Since we use this module's own `TYPES` object, we can use `instanceof`.
+  var type = TYPES[typeName];
+  return type && type.prototype instanceof PrimitiveType;
+}
+
+/**
+ * Return a type's class name from its Avro type name.
+ *
+ * We can't simply use `constructor.name` since it isn't supported in all
+ * browsers.
+ *
+ * @param typeName {String} Type name.
+ */
+function getClassName(typeName) {
+  if (typeName === 'error') {
+    typeName = 'record';
+  } else {
+    var match = /^([^:]+):(.*)$/.exec(typeName);
+    if (match) {
+      if (match[1] === 'union') {
+        typeName = match[2] + 'Union';
+      } else {
+        // Logical type.
+        typeName = match[1];
+      }
+    }
+  }
+  return utils.capitalize(typeName) + 'Type';
+}
+
+/**
+ * Get the number of elements in an array block.
+ *
+ * @param tap {Tap} A tap positioned at the beginning of an array block.
+ */
+function readArraySize(tap) {
+  var n = tap.readLong();
+  if (n < 0) {
+    n = -n;
+    tap.skipLong(); // Skip size.
+  }
+  return n;
+}
+
+/**
+ * Check whether a long can be represented without precision loss.
+ *
+ * @param n {Number} The number.
+ *
+ * Two things to note:
+ *
+ * + We are not using the `Number` constants for compatibility with older
+ *   browsers.
+ * + We must remove one from each bound because of rounding errors.
+ */
+function isSafeLong(n) {
+  return n >= -9007199254740990 && n <= 9007199254740990;
+}
+
+/**
+ * Check whether an object is the JSON representation of a buffer.
+ */
+function isJsonBuffer(obj) {
+  return obj && obj.type === 'Buffer' && Array.isArray(obj.data);
+}
+
+/**
+ * Throw a somewhat helpful error on invalid object.
+ *
+ * @param path {Array} Passed from hook, but unused (because empty where this
+ * function is used, since we aren't keeping track of it for effiency).
+ * @param val {...} The object to reject.
+ * @param type {Type} The type to check against.
+ *
+ * This method is mostly used from `_write` to signal an invalid object for a
+ * given type. Note that this provides less information than calling `isValid`
+ * with a hook since the path is not propagated (for efficiency reasons).
+ */
+function throwInvalidError(val, type) {
+  throw new Error(f('invalid %j: %j', type.schema(), val));
+}
+
+function maybeQualify(name, ns) {
+  var unqualified = utils.unqualify(name);
+  // Primitives are always in the global namespace.
+  return isPrimitive(unqualified) ? unqualified : utils.qualify(name, ns);
+}
+
+/**
+ * Get a type's bucket when included inside an unwrapped union.
+ *
+ * @param type {Type} Any type.
+ */
+function getTypeBucket(type) {
+  var typeName = type.typeName;
+  switch (typeName) {
+    case 'double':
+    case 'float':
+    case 'int':
+    case 'long':
+      return 'number';
+    case 'bytes':
+    case 'fixed':
+      return 'buffer';
+    case 'enum':
+      return 'string';
+    case 'map':
+    case 'error':
+    case 'record':
+      return 'object';
+    default:
+      return typeName;
+  }
+}
+
+/**
+ * Infer a value's bucket (see unwrapped unions for more details).
+ *
+ * @param val {...} Any value.
+ */
+function getValueBucket(val) {
+  if (val === null) {
+    return 'null';
+  }
+  var bucket = typeof val;
+  if (bucket === 'object') {
+    // Could be bytes, fixed, array, map, or record.
+    if (Array.isArray(val)) {
+      return 'array';
+    } else if (Buffer.isBuffer(val)) {
+      return 'buffer';
+    }
+  }
+  return bucket;
+}
+
+/**
+ * Check whether a collection of types leads to an ambiguous union.
+ *
+ * @param types {Array} Array of types.
+ */
+function isAmbiguous(types) {
+  var buckets = {};
+  var i, l, bucket, type;
+  for (i = 0, l = types.length; i < l; i++) {
+    type = types[i];
+    if (!Type.isType(type, 'logical')) {
+      bucket = getTypeBucket(type);
+      if (buckets[bucket]) {
+        return true;
+      }
+      buckets[bucket] = true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Combine number types.
+ *
+ * Note that never have to create a new type here, we are guaranteed to be able
+ * to reuse one of the input types as super-type.
+ */
+function combineNumbers(types) {
+  var typeNames = ['int', 'long', 'float', 'double'];
+  var superIndex = -1;
+  var superType = null;
+  var i, l, type, index;
+  for (i = 0, l = types.length; i < l; i++) {
+    type = types[i];
+    index = typeNames.indexOf(type.typeName);
+    if (index > superIndex) {
+      superIndex = index;
+      superType = type;
+    }
+  }
+  return superType;
+}
+
+/**
+ * Combine enums and strings.
+ *
+ * The order of the returned symbols is undefined and the returned enum is
+ *
+ */
+function combineStrings(types, opts) {
+  var symbols = {};
+  var i, l, type, typeSymbols;
+  for (i = 0, l = types.length; i < l; i++) {
+    type = types[i];
+    if (type.typeName === 'string') {
+      // If at least one of the types is a string, it will be the supertype.
+      return type;
+    }
+    typeSymbols = type.symbols;
+    var j, m;
+    for (j = 0, m = typeSymbols.length; j < m; j++) {
+      symbols[typeSymbols[j]] = true;
+    }
+  }
+  return Type.forSchema({type: 'enum', symbols: Object.keys(symbols)}, opts);
+}
+
+/**
+ * Combine bytes and fixed.
+ *
+ * This function is optimized to avoid creating new types when possible: in
+ * case of a size mismatch between fixed types, it will continue looking
+ * through the array to find an existing bytes type (rather than exit early by
+ * creating one eagerly).
+ */
+function combineBuffers(types, opts) {
+  var size = -1;
+  var i, l, type;
+  for (i = 0, l = types.length; i < l; i++) {
+    type = types[i];
+    if (type.typeName === 'bytes') {
+      return type;
+    }
+    if (size === -1) {
+      size = type.size;
+    } else if (type.size !== size) {
+      // Don't create a bytes type right away, we might be able to reuse one
+      // later on in the types array. Just mark this for now.
+      size = -2;
+    }
+  }
+  return size < 0 ? Type.forSchema('bytes', opts) : types[0];
+}
+
+/**
+ * Combine maps and records.
+ *
+ * Field defaults are kept when possible (i.e. when no coercion to a map
+ * happens), with later definitions overriding previous ones.
+ */
+function combineObjects(types, opts) {
+  var allTypes = []; // Field and value types.
+  var fieldTypes = {}; // Record field types grouped by field name.
+  var fieldDefaults = {};
+  var isValidRecord = true;
+
+  // Check whether the final type will be a map or a record.
+  var i, l, type, fields;
+  for (i = 0, l = types.length; i < l; i++) {
+    type = types[i];
+    if (type.typeName === 'map') {
+      isValidRecord = false;
+      allTypes.push(type.valuesType);
+    } else {
+      fields = type.fields;
+      var j, m, field, fieldDefault, fieldName, fieldType;
+      for (j = 0, m = fields.length; j < m; j++) {
+        field = fields[j];
+        fieldName = field.name;
+        fieldType = field.type;
+        allTypes.push(fieldType);
+        if (isValidRecord) {
+          if (!fieldTypes[fieldName]) {
+            fieldTypes[fieldName] = [];
+          }
+          fieldTypes[fieldName].push(fieldType);
+          fieldDefault = field.defaultValue();
+          if (fieldDefault !== undefined) {
+            // Later defaults will override any previous ones.
+            fieldDefaults[fieldName] = fieldDefault;
+          }
+        }
+      }
+    }
+  }
+
+  if (isValidRecord) {
+    // Check that no fields are missing and that we have the approriate
+    // defaults for those which are.
+    var fieldNames = Object.keys(fieldTypes);
+    for (i = 0, l = fieldNames.length; i < l; i++) {
+      fieldName = fieldNames[i];
+      if (
+        fieldTypes[fieldName].length < types.length &&
+        fieldDefaults[fieldName] === undefined
+      ) {
+        // At least one of the records is missing a field with no default.
+        if (opts && opts.strictDefaults) {
+          isValidRecord = false;
+        } else {
+          fieldTypes[fieldName].unshift(Type.forSchema('null', opts));
+          fieldDefaults[fieldName] = null;
+        }
+      }
+    }
+  }
+
+  var schema;
+  if (isValidRecord) {
+    schema = {
+      type: 'record',
+      fields: fieldNames.map(function (s) {
+        var fieldType = Type.forTypes(fieldTypes[s], opts);
+        var fieldDefault = fieldDefaults[s];
+        if (
+          fieldDefault !== undefined &&
+          ~fieldType.typeName.indexOf('union')
+        ) {
+          // Ensure that the default's corresponding type is first.
+          var unionTypes = fieldType.types.slice();
+          var i, l;
+          for (i = 0, l = unionTypes.length; i < l; i++) {
+            if (unionTypes[i].isValid(fieldDefault)) {
+              break;
+            }
+          }
+          if (i > 0) {
+            var unionType = unionTypes[0];
+            unionTypes[0] = unionTypes[i];
+            unionTypes[i] = unionType;
+            fieldType = Type.forSchema(unionTypes, opts);
+          }
+        }
+        return {
+          name: s,
+          type: fieldType,
+          'default': fieldDefaults[s]
+        };
+      })
+    };
+  } else {
+    schema = {
+      type: 'map',
+      values: Type.forTypes(allTypes, opts)
+    };
+  }
+  return Type.forSchema(schema, opts);
+}
+
+
+module.exports = {
+  Type: Type,
+  getTypeBucket: getTypeBucket,
+  getValueBucket: getValueBucket,
+  isPrimitive: isPrimitive,
+  builtins: (function () {
+    var types = {
+      LogicalType: LogicalType,
+      UnwrappedUnionType: UnwrappedUnionType,
+      WrappedUnionType: WrappedUnionType
+    };
+    var typeNames = Object.keys(TYPES);
+    var i, l, typeName;
+    for (i = 0, l = typeNames.length; i < l; i++) {
+      typeName = typeNames[i];
+      types[getClassName(typeName)] = TYPES[typeName];
+    }
+    return types;
+  })()
+};
+
+
+/***/ }),
 /* 454 */
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -17815,7 +23721,791 @@ module.exports = OperationSecurityRequirement;
 
 /***/ }),
 /* 493 */,
-/* 494 */,
+/* 494 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+"use strict";
+/* jshint node: true */
+
+// TODO: Add minimal templating.
+// TODO: Add option to prefix nested type declarations with the outer types'
+// names.
+
+
+
+/** IDL to protocol (services) and schema (types) parsing logic. */
+
+var files = __webpack_require__(919),
+    utils = __webpack_require__(777),
+    path = __webpack_require__(622),
+    util = __webpack_require__(669);
+
+
+var f = util.format;
+
+
+// Default type references defined by Avro.
+var TYPE_REFS = {
+  date: {type: 'int', logicalType: 'date'},
+  decimal: {type: 'bytes', logicalType: 'decimal'},
+  time_ms: {type: 'long', logicalType: 'time-millis'},
+  timestamp_ms: {type: 'long', logicalType: 'timestamp-millis'}
+};
+
+
+/** Assemble an IDL file into a decoded protocol. */
+function assembleProtocol(fpath, opts, cb) {
+  if (!cb && typeof opts == 'function') {
+    cb = opts;
+    opts = undefined;
+  }
+  opts = opts || {};
+  if (!opts.importHook) {
+    opts.importHook = files.createImportHook();
+  }
+
+  importFile(fpath, function (err, protocol) {
+    if (err) {
+      cb(err);
+      return;
+    }
+    if (!protocol) {
+      cb(new Error('empty root import'));
+      return;
+    }
+    var schemas = protocol.types;
+    if (schemas) {
+      // Strip redundant namespaces from types before returning the protocol.
+      // Note that we keep empty (`''`) nested namespaces when the outer one is
+      // non-empty. This allows figuring out whether unqualified imported names
+      // should be qualified by the protocol's namespace: they should if their
+      // namespace is `undefined` and should not if it is empty.
+      var namespace = protocolNamespace(protocol) || '';
+      schemas.forEach(function (schema) {
+        if (schema.namespace === namespace) {
+          delete schema.namespace;
+        }
+      });
+    }
+    cb(null, protocol);
+  });
+
+  function importFile(fpath, cb) {
+    opts.importHook(fpath, 'idl', function (err, str) {
+      if (err) {
+        cb(err);
+        return;
+      }
+      if (str === undefined) {
+        // This signals an already imported file by the default import hooks.
+        // Implementors who wish to disallow duplicate imports should provide a
+        // custom hook which throws an error when a duplicate is detected.
+        cb();
+        return;
+      }
+      try {
+        var reader = new Reader(str, opts);
+        var obj = reader._readProtocol(str, opts);
+      } catch (err) {
+        err.path = fpath; // To help debug which file caused the error.
+        cb(err);
+        return;
+      }
+      fetchImports(obj.protocol, obj.imports, path.dirname(fpath), cb);
+    });
+  }
+
+  function fetchImports(protocol, imports, dpath, cb) {
+    var importedProtocols = [];
+    next();
+
+    function next() {
+      var info = imports.shift();
+      if (!info) {
+        // We are done with this file. We prepend all imported types to this
+        // file's and we can return the final result.
+        importedProtocols.reverse();
+        try {
+          importedProtocols.forEach(function (imported) {
+            mergeImport(protocol, imported);
+          });
+        } catch (err) {
+          cb(err);
+          return;
+        }
+        cb(null, protocol);
+        return;
+      }
+      var importPath = path.join(dpath, info.name);
+      if (info.kind === 'idl') {
+        importFile(importPath, function (err, imported) {
+          if (err) {
+            cb(err);
+            return;
+          }
+          if (imported) {
+            importedProtocols.push(imported);
+          }
+          next();
+        });
+      } else {
+        // We are importing a protocol or schema file.
+        opts.importHook(importPath, info.kind, function (err, str) {
+          if (err) {
+            cb(err);
+            return;
+          }
+          switch (info.kind) {
+            case 'protocol':
+            case 'schema':
+              if (str === undefined) {
+                // Skip duplicate import (see related comment above).
+                next();
+                return;
+              }
+              try {
+                var obj = JSON.parse(str);
+              } catch (err) {
+                err.path = importPath;
+                cb(err);
+                return;
+              }
+              var imported = info.kind === 'schema' ? {types: [obj]} : obj;
+              importedProtocols.push(imported);
+              next();
+              return;
+            default:
+              cb(new Error(f('invalid import kind: %s', info.kind)));
+          }
+        });
+      }
+    }
+  }
+
+  function mergeImport(protocol, imported) {
+    // Merge first the types (where we don't need to check for duplicates
+    // since instantiating the service will take care of it), then the messages
+    // (where we need to, as duplicates will overwrite each other).
+    var schemas = imported.types || [];
+    schemas.reverse();
+    schemas.forEach(function (schema) {
+      if (!protocol.types) {
+        protocol.types = [];
+      }
+      // Ensure the imported protocol's namespace is inherited correctly (it
+      // might be different from the current one).
+      if (schema.namespace === undefined) {
+        schema.namespace = protocolNamespace(imported) || '';
+      }
+      protocol.types.unshift(schema);
+    });
+    Object.keys(imported.messages || {}).forEach(function (name) {
+      if (!protocol.messages) {
+        protocol.messages = {};
+      }
+      if (protocol.messages[name]) {
+        throw new Error(f('duplicate message: %s', name));
+      }
+      protocol.messages[name] = imported.messages[name];
+    });
+  }
+}
+
+// Parsing functions.
+
+/**
+ * Convenience function to parse multiple inputs into protocols and schemas.
+ *
+ * It should cover most basic use-cases but has a few limitations:
+ *
+ * + It doesn't allow passing options to the parsing step.
+ * + The protocol/type inference logic can be deceived.
+ *
+ * The parsing logic is as follows:
+ *
+ * + If `str` contains `path.sep` (on windows `\`, otherwise `/`) and is a path
+ *   to an existing file, it will first be read as JSON, then as an IDL
+ *   specification if JSON parsing failed. If either succeeds, the result is
+ *   returned, otherwise the next steps are run using the file's content
+ *   instead of the input path.
+ * + If `str` is a valid JSON string, it is parsed then returned.
+ * + If `str` is a valid IDL protocol specification, it is parsed and returned
+ *   if no imports are present (and an error is thrown if there are any
+ *   imports).
+ * + If `str` is a valid IDL type specification, it is parsed and returned.
+ * + If neither of the above cases apply, `str` is returned.
+ */
+function read(str) {
+  var schema;
+  if (typeof str == 'string' && ~str.indexOf(path.sep) && files.existsSync(str)) {
+    // Try interpreting `str` as path to a file contain a JSON schema or an IDL
+    // protocol. Note that we add the second check to skip primitive references
+    // (e.g. `"int"`, the most common use-case for `avro.parse`).
+    var contents = files.readFileSync(str, {encoding: 'utf8'});
+    try {
+      return JSON.parse(contents);
+    } catch (err) {
+      var opts = {importHook: files.createSyncImportHook()};
+      assembleProtocol(str, opts, function (err, protocolSchema) {
+        schema = err ? contents : protocolSchema;
+      });
+    }
+  } else {
+    schema = str;
+  }
+  if (typeof schema != 'string' || schema === 'null') {
+    // This last predicate is to allow `read('null')` to work similarly to
+    // `read('int')` and other primitives (null needs to be handled separately
+    // since it is also a valid JSON identifier).
+    return schema;
+  }
+  try {
+    return JSON.parse(schema);
+  } catch (err) {
+    try {
+      return Reader.readProtocol(schema);
+    } catch (err) {
+      try {
+        return Reader.readSchema(schema);
+      } catch (err) {
+        return schema;
+      }
+    }
+  }
+}
+
+function Reader(str, opts) {
+  opts = opts || {};
+
+  this._tk = new Tokenizer(str);
+  this._ackVoidMessages = !!opts.ackVoidMessages;
+  this._implicitTags = !opts.delimitedCollections;
+  this._typeRefs = opts.typeRefs || TYPE_REFS;
+}
+
+Reader.readProtocol = function (str, opts) {
+  var reader = new Reader(str, opts);
+  var protocol = reader._readProtocol();
+  if (protocol.imports.length) {
+    // Imports can only be resolved when the IDL file is provided via its
+    // path, we fail rather than silently ignore imports.
+    throw new Error('unresolvable import');
+  }
+  return protocol.protocol;
+};
+
+Reader.readSchema = function (str, opts) {
+  var reader = new Reader(str, opts);
+  var doc = reader._readJavadoc();
+  var schema = reader._readType(doc === undefined ? {} : {doc: doc}, true);
+  reader._tk.next({id: '(eof)'}); // Check that we have read everything.
+  return schema;
+};
+
+Reader.prototype._readProtocol = function () {
+  var tk = this._tk;
+  var imports = [];
+  var types = [];
+  var messages = {};
+  var pos;
+
+  // Outer declarations (outside of the protocol block).
+  this._readImports(imports);
+  var protocolSchema = {};
+  var protocolJavadoc = this._readJavadoc();
+  if (protocolJavadoc !== undefined) {
+    protocolSchema.doc = protocolJavadoc;
+  }
+  this._readAnnotations(protocolSchema);
+  tk.next({val: 'protocol'});
+  if (!tk.next({val: '{', silent: true})) {
+    // Named protocol.
+    protocolSchema.protocol = tk.next({id: 'name'}).val;
+    tk.next({val: '{'});
+  }
+
+  // Inner declarations.
+  while (!tk.next({val: '}', silent: true})) {
+    if (!this._readImports(imports)) {
+      var javadoc = this._readJavadoc();
+      var typeSchema = this._readType({}, true);
+      var numImports = this._readImports(imports, true);
+      var message = undefined;
+      // We mark our position and try to parse a message from here.
+      pos = tk.pos;
+      if (!numImports && (message = this._readMessage(typeSchema))) {
+        // Note that if any imports were found, we cannot be parsing a message.
+        if (javadoc !== undefined && message.schema.doc === undefined) {
+          message.schema.doc = javadoc;
+        }
+        var oneWay = false;
+        if (
+          message.schema.response === 'void' ||
+          message.schema.response.type === 'void'
+        ) {
+          oneWay = !this._ackVoidMessages && !message.schema.errors;
+          if (message.schema.response === 'void') {
+            message.schema.response = 'null';
+          } else {
+            message.schema.response.type = 'null';
+          }
+        }
+        if (oneWay) {
+          message.schema['one-way'] = true;
+        }
+        if (messages[message.name]) {
+          // We have to do this check here otherwise the duplicate will be
+          // overwritten (and service instantiation won't be able to catch it).
+          throw new Error(f('duplicate message: %s', message.name));
+        }
+        messages[message.name] = message.schema;
+      } else {
+        // This was a standalone type definition.
+        if (javadoc) {
+          if (typeof typeSchema == 'string') {
+            typeSchema = {doc: javadoc, type: typeSchema};
+          } else if (typeSchema.doc === undefined) {
+            typeSchema.doc = javadoc;
+          }
+        }
+        types.push(typeSchema);
+        // We backtrack until just before the type's type name and swallow an
+        // eventual semi-colon (to make type declarations more consistent).
+        tk.pos = pos;
+        tk.next({val: ';', silent: true});
+      }
+      javadoc = undefined;
+    }
+  }
+  tk.next({id: '(eof)'});
+  if (types.length) {
+    protocolSchema.types = types;
+  }
+  if (Object.keys(messages).length) {
+    protocolSchema.messages = messages;
+  }
+  return {protocol: protocolSchema, imports: imports};
+};
+
+Reader.prototype._readAnnotations = function (schema) {
+  var tk = this._tk;
+  while (tk.next({val: '@', silent: true})) {
+    // Annotations are allowed to have names which aren't valid Avro names,
+    // we must advance until we hit the first left parenthesis.
+    var parts = [];
+    while (!tk.next({val: '(', silent: true})) {
+      parts.push(tk.next().val);
+    }
+    schema[parts.join('')] = tk.next({id: 'json'}).val;
+    tk.next({val: ')'});
+  }
+};
+
+Reader.prototype._readMessage = function (responseSchema) {
+  var tk = this._tk;
+  var schema = {request: [], response: responseSchema};
+  this._readAnnotations(schema);
+  var name = tk.next().val;
+  if (tk.next().val !== '(') {
+    // This isn't a message.
+    return;
+  }
+  if (!tk.next({val: ')', silent: true})) {
+    do {
+      schema.request.push(this._readField());
+    } while (!tk.next({val: ')', silent: true}) && tk.next({val: ','}));
+  }
+  var token = tk.next();
+  switch (token.val) {
+    case 'throws':
+      // It doesn't seem like the IDL is explicit about which syntax to used
+      // for multiple errors. We will assume a comma-separated list.
+      schema.errors = [];
+      do {
+        schema.errors.push(this._readType());
+      } while (!tk.next({val: ';', silent: true}) && tk.next({val: ','}));
+      break;
+    case 'oneway':
+      schema['one-way'] = true;
+      tk.next({val: ';'});
+      break;
+    case ';':
+      break;
+    default:
+      throw tk.error('invalid message suffix', token);
+  }
+  return {name: name, schema: schema};
+};
+
+Reader.prototype._readJavadoc = function () {
+  var token = this._tk.next({id: 'javadoc', emitJavadoc: true, silent: true});
+  if (token) {
+    return token.val;
+  }
+};
+
+Reader.prototype._readField = function () {
+  var tk = this._tk;
+  var javadoc = this._readJavadoc();
+  var schema = {type: this._readType()};
+  if (javadoc !== undefined && schema.doc === undefined) {
+    schema.doc = javadoc;
+  }
+  this._readAnnotations(schema);
+  schema.name = tk.next({id: 'name'}).val;
+  if (tk.next({val: '=', silent: true})) {
+    schema['default'] = tk.next({id: 'json'}).val;
+  }
+  return schema;
+};
+
+Reader.prototype._readType = function (schema, top) {
+  schema = schema || {};
+  this._readAnnotations(schema);
+  schema.type = this._tk.next({id: 'name'}).val;
+  switch (schema.type) {
+    case 'record':
+    case 'error':
+      return this._readRecord(schema);
+    case 'fixed':
+      return this._readFixed(schema);
+    case 'enum':
+      return this._readEnum(schema, top);
+    case 'map':
+      return this._readMap(schema);
+    case 'array':
+      return this._readArray(schema);
+    case 'union':
+      if (Object.keys(schema).length > 1) {
+        throw new Error('union annotations are not supported');
+      }
+      return this._readUnion();
+    default:
+      // Reference.
+      var ref = this._typeRefs[schema.type];
+      if (ref) {
+        delete schema.type; // Always overwrite the type.
+        utils.copyOwnProperties(ref, schema);
+      }
+      return Object.keys(schema).length > 1 ? schema : schema.type;
+  }
+};
+
+Reader.prototype._readFixed = function (schema) {
+  var tk = this._tk;
+  if (!tk.next({val: '(', silent: true})) {
+    schema.name = tk.next({id: 'name'}).val;
+    tk.next({val: '('});
+  }
+  schema.size = parseInt(tk.next({id: 'number'}).val);
+  tk.next({val: ')'});
+  return schema;
+};
+
+Reader.prototype._readMap = function (schema) {
+  var tk = this._tk;
+  // Brackets are unwieldy when declaring inline types. We allow for them to be
+  // omitted (but we keep the consistency that if the entry bracket is present,
+  // the exit one must be as well). Note that this is non-standard.
+  var silent = this._implicitTags;
+  var implicitTags = tk.next({val: '<', silent: silent}) === undefined;
+  schema.values = this._readType();
+  tk.next({val: '>', silent: implicitTags});
+  return schema;
+};
+
+Reader.prototype._readArray = function (schema) {
+  var tk = this._tk;
+  var silent = this._implicitTags;
+  var implicitTags = tk.next({val: '<', silent: silent}) === undefined;
+  schema.items = this._readType();
+  tk.next({val: '>', silent: implicitTags});
+  return schema;
+};
+
+Reader.prototype._readEnum = function (schema, top) {
+  var tk = this._tk;
+  if (!tk.next({val: '{', silent: true})) {
+    schema.name = tk.next({id: 'name'}).val;
+    tk.next({val: '{'});
+  }
+  schema.symbols = [];
+  do {
+    schema.symbols.push(tk.next().val);
+  } while (!tk.next({val: '}', silent: true}) && tk.next({val: ','}));
+  // To avoid confusing syntax, reader enums (i.e. enums with a default value)
+  // can only be defined top-level.
+  if (top && tk.next({val: '=', silent: true})) {
+    schema.default = tk.next().val;
+    tk.next({val: ';'});
+  }
+  return schema;
+};
+
+Reader.prototype._readUnion = function () {
+  var tk = this._tk;
+  var arr = [];
+  tk.next({val: '{'});
+  do {
+    arr.push(this._readType());
+  } while (!tk.next({val: '}', silent: true}) && tk.next({val: ','}));
+  return arr;
+};
+
+Reader.prototype._readRecord = function (schema) {
+  var tk = this._tk;
+  if (!tk.next({val: '{', silent: true})) {
+    schema.name = tk.next({id: 'name'}).val;
+    tk.next({val: '{'});
+  }
+  schema.fields = [];
+  while (!tk.next({val: '}', silent: true})) {
+    schema.fields.push(this._readField());
+    tk.next({val: ';'});
+  }
+  return schema;
+};
+
+Reader.prototype._readImports = function (imports, maybeMessage) {
+  var tk = this._tk;
+  var numImports = 0;
+  var pos = tk.pos;
+  while (tk.next({val: 'import', silent: true})) {
+    if (!numImports && maybeMessage && tk.next({val: '(', silent: true})) {
+      // This will happen if a message is named import.
+      tk.pos = pos;
+      return;
+    }
+    var kind = tk.next({id: 'name'}).val;
+    var fname = JSON.parse(tk.next({id: 'string'}).val);
+    tk.next({val: ';'});
+    imports.push({kind: kind, name: fname});
+    numImports++;
+  }
+  return numImports;
+};
+
+// Helpers.
+
+/**
+ * Simple class to split an input string into tokens.
+ *
+ * There are different types of tokens, characterized by their `id`:
+ *
+ * + `number` numbers.
+ * + `name` references.
+ * + `string` double-quoted.
+ * + `operator`, anything else, always single character.
+ * + `javadoc`, only emitted when `next` is called with `emitJavadoc` set.
+ * + `json`, only emitted when `next` is called with `'json'` as `id` (the
+ *   tokenizer doesn't have enough context to predict these).
+ */
+function Tokenizer(str) {
+  this._str = str;
+  this.pos = 0;
+}
+
+Tokenizer.prototype.next = function (opts) {
+  var token = {pos: this.pos, id: undefined, val: undefined};
+  var javadoc = this._skip(opts && opts.emitJavadoc);
+  if (typeof javadoc == 'string') {
+    token.id = 'javadoc';
+    token.val = javadoc;
+  } else {
+    var pos = this.pos;
+    var str = this._str;
+    var c = str.charAt(pos);
+    if (!c) {
+      token.id = '(eof)';
+    } else {
+      if (opts && opts.id === 'json') {
+        token.id = 'json';
+        this.pos = this._endOfJson();
+      } else if (c === '"') {
+        token.id = 'string';
+        this.pos = this._endOfString();
+      } else if (/[0-9]/.test(c)) {
+        token.id = 'number';
+        this.pos = this._endOf(/[0-9]/);
+      } else if (/[`A-Za-z_.]/.test(c)) {
+        token.id = 'name';
+        this.pos = this._endOf(/[`A-Za-z0-9_.]/);
+      } else {
+        token.id = 'operator';
+        this.pos = pos + 1;
+      }
+      token.val = str.slice(pos, this.pos);
+      if (token.id === 'json') {
+        // Let's be nice and give a more helpful error message when this occurs
+        // (JSON parsing errors wouldn't let us find the location otherwise).
+        try {
+          token.val = JSON.parse(token.val);
+        } catch (err) {
+          throw this.error('invalid JSON', token);
+        }
+      } else if (token.id === 'name') {
+        // Unescape names (our parser doesn't need them).
+        token.val = token.val.replace(/`/g, '');
+      }
+    }
+  }
+
+  var err;
+  if (opts && opts.id && opts.id !== token.id) {
+    err = this.error(f('expected ID %s', opts.id), token);
+  } else if (opts && opts.val && opts.val !== token.val) {
+    err = this.error(f('expected value %s', opts.val), token);
+  }
+  if (!err) {
+    return token;
+  } else if (opts && opts.silent) {
+    this.pos = token.pos; // Backtrack to start of token.
+    return undefined;
+  } else {
+    throw err;
+  }
+};
+
+Tokenizer.prototype.error = function (reason, context) {
+  // Context must be either a token or a position.
+  var isToken = typeof context != 'number';
+  var pos = isToken ? context.pos : context;
+  var str = this._str;
+  var lineNum = 1;
+  var lineStart = 0;
+  var i;
+  for (i = 0; i < pos; i++) {
+    if (str.charAt(i) === '\n') {
+      lineNum++;
+      lineStart = i;
+    }
+  }
+  var msg = isToken ? f('invalid token %j: %s', context, reason) : reason;
+  var err = new Error(msg);
+  err.token = isToken ? context : undefined;
+  err.lineNum = lineNum;
+  err.colNum = pos - lineStart;
+  return err;
+};
+
+/** Skip whitespace and comments. */
+Tokenizer.prototype._skip = function (emitJavadoc) {
+  var str = this._str;
+  var isJavadoc = false;
+  var pos, c;
+
+  while ((c = str.charAt(this.pos)) && /\s/.test(c)) {
+    this.pos++;
+  }
+  pos = this.pos;
+  if (c === '/') {
+    switch (str.charAt(this.pos + 1)) {
+    case '/':
+      this.pos += 2;
+      while ((c = str.charAt(this.pos)) && c !== '\n') {
+        this.pos++;
+      }
+      return this._skip(emitJavadoc);
+    case '*':
+      this.pos += 2;
+      if (str.charAt(this.pos) === '*') {
+        isJavadoc = true;
+      }
+      while ((c = str.charAt(this.pos++))) {
+        if (c === '*' && str.charAt(this.pos) === '/') {
+          this.pos++;
+          if (isJavadoc && emitJavadoc) {
+            return extractJavadoc(str.slice(pos + 3, this.pos - 2));
+          }
+          return this._skip(emitJavadoc);
+        }
+      }
+      throw this.error('unterminated comment', pos);
+    }
+  }
+};
+
+/** Generic end of method. */
+Tokenizer.prototype._endOf = function (pat) {
+  var pos = this.pos;
+  var str = this._str;
+  while (pat.test(str.charAt(pos))) {
+    pos++;
+  }
+  return pos;
+};
+
+/** Find end of a string. */
+Tokenizer.prototype._endOfString = function () {
+  var pos = this.pos + 1; // Skip first double quote.
+  var str = this._str;
+  var c;
+  while ((c = str.charAt(pos))) {
+    if (c === '"') {
+      // The spec doesn't explicitly say so, but IDLs likely only
+      // allow double quotes for strings (C- and Java-style).
+      return pos + 1;
+    }
+    if (c === '\\') {
+      pos += 2;
+    } else {
+      pos++;
+    }
+  }
+  throw this.error('unterminated string', pos - 1);
+};
+
+/** Find end of JSON object, throwing an error if the end is reached first. */
+Tokenizer.prototype._endOfJson = function () {
+  var pos = utils.jsonEnd(this._str, this.pos);
+  if (pos < 0) {
+    throw this.error('invalid JSON', pos);
+  }
+  return pos;
+};
+
+/**
+ * Extract Javadoc contents from the comment.
+ *
+ * The parsing done is very simple and simply removes the line prefixes and
+ * leading / trailing empty lines. It's better to be conservative with
+ * formatting rather than risk losing information.
+ */
+function extractJavadoc(str) {
+  var lines = str
+    .replace(/^[ \t]+|[ \t]+$/g, '') // Trim whitespace.
+    .split('\n').map(function (line, i) {
+      return i ? line.replace(/^\s*\*\s?/, '') : line;
+    });
+  while (lines.length && !lines[0]) {
+    lines.shift();
+  }
+  while (lines.length && !lines[lines.length - 1]) {
+    lines.pop();
+  }
+  return lines.join('\n');
+}
+
+/** Returns the namespace generated by a protocol. */
+function protocolNamespace(protocol) {
+  if (protocol.namespace) {
+    return protocol.namespace;
+  }
+  var match = /^(.*)\.[^.]+$/.exec(protocol.protocol);
+  return match ? match[1] : undefined;
+}
+
+
+module.exports = {
+  Tokenizer: Tokenizer,
+  assembleProtocol: assembleProtocol,
+  read: read,
+  readProtocol: Reader.readProtocol,
+  readSchema: Reader.readSchema
+};
+
+
+/***/ }),
 /* 495 */,
 /* 496 */,
 /* 497 */,
@@ -31713,7 +38403,975 @@ exports.default = apply;
 
 /***/ }),
 /* 776 */,
-/* 777 */,
+/* 777 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+"use strict";
+/* jshint node: true */
+
+// TODO: Make long comparison impervious to precision loss.
+// TODO: Optimize binary comparison methods.
+
+
+
+/** Various utilities used across this library. */
+
+var crypto = __webpack_require__(373);
+var util = __webpack_require__(669);
+
+// Shared buffer pool for all taps.
+var POOL = new BufferPool(4096);
+
+// Valid (field, type, and symbol) name regex.
+var NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+// Convenience imports.
+var f = util.format;
+
+/**
+ * Create a new empty buffer.
+ *
+ * @param size {Number} The buffer's size.
+ */
+function newBuffer(size) {
+  if (typeof Buffer.alloc == 'function') {
+    return Buffer.alloc(size);
+  } else {
+    return new Buffer(size);
+  }
+}
+
+/**
+ * Create a new buffer with the input contents.
+ *
+ * @param data {Array|String} The buffer's data.
+ * @param enc {String} Encoding, used if data is a string.
+ */
+function bufferFrom(data, enc) {
+  if (typeof Buffer.from == 'function') {
+    return Buffer.from(data, enc);
+  } else {
+    return new Buffer(data, enc);
+  }
+}
+
+/**
+ * Uppercase the first letter of a string.
+ *
+ * @param s {String} The string.
+ */
+function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+/**
+ * Compare two numbers.
+ *
+ * @param n1 {Number} The first one.
+ * @param n2 {Number} The second one.
+ */
+function compare(n1, n2) { return n1 === n2 ? 0 : (n1 < n2 ? -1 : 1); }
+
+/**
+ * Get option or default if undefined.
+ *
+ * @param opts {Object} Options.
+ * @param key {String} Name of the option.
+ * @param def {...} Default value.
+ *
+ * This is useful mostly for true-ish defaults and false-ish values (where the
+ * usual `||` idiom breaks down).
+ */
+function getOption(opts, key, def) {
+  var value = opts[key];
+  return value === undefined ? def : value;
+}
+
+/**
+ * Compute a string's hash.
+ *
+ * @param str {String} The string to hash.
+ * @param algorithm {String} The algorithm used. Defaults to MD5.
+ */
+function getHash(str, algorithm) {
+  algorithm = algorithm || 'md5';
+  var hash = crypto.createHash(algorithm);
+  hash.end(str);
+  return hash.read();
+}
+
+/**
+ * Find index of value in array.
+ *
+ * @param arr {Array} Can also be a false-ish value.
+ * @param v {Object} Value to find.
+ *
+ * Returns -1 if not found, -2 if found multiple times.
+ */
+function singleIndexOf(arr, v) {
+  var pos = -1;
+  var i, l;
+  if (!arr) {
+    return -1;
+  }
+  for (i = 0, l = arr.length; i < l; i++) {
+    if (arr[i] === v) {
+      if (pos >= 0) {
+        return -2;
+      }
+      pos = i;
+    }
+  }
+  return pos;
+}
+
+/**
+ * Convert array to map.
+ *
+ * @param arr {Array} Elements.
+ * @param fn {Function} Function returning an element's key.
+ */
+function toMap(arr, fn) {
+  var obj = {};
+  var i, elem;
+  for (i = 0; i < arr.length; i++) {
+    elem = arr[i];
+    obj[fn(elem)] = elem;
+  }
+  return obj;
+}
+
+/**
+ * Convert map to array of values (polyfill for `Object.values`).
+ *
+ * @param obj {Object} Map.
+ */
+function objectValues(obj) {
+  return Object.keys(obj).map(function (key) { return obj[key]; });
+}
+
+/**
+ * Check whether an array has duplicates.
+ *
+ * @param arr {Array} The array.
+ * @param fn {Function} Optional function to apply to each element.
+ */
+function hasDuplicates(arr, fn) {
+  var obj = Object.create(null);
+  var i, l, elem;
+  for (i = 0, l = arr.length; i < l; i++) {
+    elem = arr[i];
+    if (fn) {
+      elem = fn(elem);
+    }
+    if (obj[elem]) {
+      return true;
+    }
+    obj[elem] = true;
+  }
+  return false;
+}
+
+/**
+ * Copy properties from one object to another.
+ *
+ * @param src {Object} The source object.
+ * @param dst {Object} The destination object.
+ * @param overwrite {Boolean} Whether to overwrite existing destination
+ * properties. Defaults to false.
+ */
+function copyOwnProperties(src, dst, overwrite) {
+  var names = Object.getOwnPropertyNames(src);
+  var i, l, name;
+  for (i = 0, l = names.length; i < l; i++) {
+    name = names[i];
+    if (!dst.hasOwnProperty(name) || overwrite) {
+      var descriptor = Object.getOwnPropertyDescriptor(src, name);
+      Object.defineProperty(dst, name, descriptor);
+    }
+  }
+  return dst;
+}
+
+/**
+ * Check whether a string is a valid Avro identifier.
+ */
+function isValidName(str) { return NAME_PATTERN.test(str); }
+
+/**
+ * Verify and return fully qualified name.
+ *
+ * @param name {String} Full or short name. It can be prefixed with a dot to
+ * force global namespace.
+ * @param namespace {String} Optional namespace.
+ */
+function qualify(name, namespace) {
+  if (~name.indexOf('.')) {
+    name = name.replace(/^\./, ''); // Allow absolute referencing.
+  } else if (namespace) {
+    name = namespace + '.' + name;
+  }
+  name.split('.').forEach(function (part) {
+    if (!isValidName(part)) {
+      throw new Error(f('invalid name: %j', name));
+    }
+  });
+  return name;
+}
+
+/**
+ * Remove namespace from a name.
+ *
+ * @param name {String} Full or short name.
+ */
+function unqualify(name) {
+  var parts = name.split('.');
+  return parts[parts.length - 1];
+}
+
+/**
+ * Return the namespace implied by a name.
+ *
+ * @param name {String} Full or short name. If short, the returned namespace
+ *  will be empty.
+ */
+function impliedNamespace(name) {
+  var match = /^(.*)\.[^.]+$/.exec(name);
+  return match ? match[1] : undefined;
+}
+
+/**
+ * Returns offset in the string of the end of JSON object (-1 if past the end).
+ *
+ * To keep the implementation simple, this function isn't a JSON validator. It
+ * will gladly return a result for invalid JSON (which is OK since that will be
+ * promptly rejected by the JSON parser). What matters is that it is guaranteed
+ * to return the correct end when presented with valid JSON.
+ *
+ * @param str {String} Input string containing serialized JSON..
+ * @param pos {Number} Starting position.
+ */
+function jsonEnd(str, pos) {
+  pos = pos | 0;
+
+  // Handle the case of a simple literal separately.
+  var c = str.charAt(pos++);
+  if (/[\d-]/.test(c)) {
+    while (/[eE\d.+-]/.test(str.charAt(pos))) {
+      pos++;
+    }
+    return pos;
+  } else if (/true|null/.test(str.slice(pos - 1, pos + 3))) {
+    return pos + 3;
+  } else if (/false/.test(str.slice(pos - 1, pos + 4))) {
+    return pos + 4;
+  }
+
+  // String, object, or array.
+  var depth = 0;
+  var literal = false;
+  do {
+    switch (c) {
+    case '{':
+    case '[':
+      if (!literal) { depth++; }
+      break;
+    case '}':
+    case ']':
+      if (!literal && !--depth) {
+        return pos;
+      }
+      break;
+    case '"':
+      literal = !literal;
+      if (!depth && !literal) {
+        return pos;
+      }
+      break;
+    case '\\':
+      pos++; // Skip the next character.
+    }
+  } while ((c = str.charAt(pos++)));
+
+  return -1;
+}
+
+/** "Abstract" function to help with "subclassing". */
+function abstractFunction() { throw new Error('abstract'); }
+
+/** Batch-deprecate "getters" from an object's prototype. */
+function addDeprecatedGetters(obj, props) {
+  var proto = obj.prototype;
+  var i, l, prop, getter;
+  for (i = 0, l = props.length; i < l; i++) {
+    prop = props[i];
+    getter = 'get' + capitalize(prop);
+    proto[getter] = util.deprecate(
+      createGetter(prop),
+      'use `.' + prop + '` instead of `.' + getter + '()`'
+    );
+  }
+
+  function createGetter(prop) {
+    return function () {
+      var delegate = this[prop];
+      return typeof delegate == 'function' ?
+        delegate.apply(this, arguments) :
+        delegate;
+    };
+  }
+}
+
+/**
+ * Simple buffer pool to avoid allocating many small buffers.
+ *
+ * This provides significant speedups in recent versions of node (6+).
+ */
+function BufferPool(len) {
+  this._len = len | 0;
+  this._pos = 0;
+  this._slab = newBuffer(this._len);
+}
+
+BufferPool.prototype.alloc = function (len) {
+  if (len < 0) {
+    throw new Error('negative length');
+  }
+  var maxLen = this._len;
+  if (len > maxLen) {
+    return newBuffer(len);
+  }
+  if (this._pos + len > maxLen) {
+    this._slab = newBuffer(maxLen);
+    this._pos = 0;
+  }
+  return this._slab.slice(this._pos, this._pos += len);
+};
+
+/**
+ * Generator of random things.
+ *
+ * Inspired by: http://stackoverflow.com/a/424445/1062617
+ */
+function Lcg(seed) {
+  var a = 1103515245;
+  var c = 12345;
+  var m = Math.pow(2, 31);
+  var state = Math.floor(seed || Math.random() * (m - 1));
+
+  this._max = m;
+  this._nextInt = function () { return state = (a * state + c) % m; };
+}
+
+Lcg.prototype.nextBoolean = function () {
+  // jshint -W018
+  return !!(this._nextInt() % 2);
+};
+
+Lcg.prototype.nextInt = function (start, end) {
+  if (end === undefined) {
+    end = start;
+    start = 0;
+  }
+  end = end === undefined ? this._max : end;
+  return start + Math.floor(this.nextFloat() * (end - start));
+};
+
+Lcg.prototype.nextFloat = function (start, end) {
+  if (end === undefined) {
+    end = start;
+    start = 0;
+  }
+  end = end === undefined ? 1 : end;
+  return start + (end - start) * this._nextInt() / this._max;
+};
+
+Lcg.prototype.nextString = function(len, flags) {
+  len |= 0;
+  flags = flags || 'aA';
+  var mask = '';
+  if (flags.indexOf('a') > -1) {
+    mask += 'abcdefghijklmnopqrstuvwxyz';
+  }
+  if (flags.indexOf('A') > -1) {
+    mask += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  }
+  if (flags.indexOf('#') > -1) {
+    mask += '0123456789';
+  }
+  if (flags.indexOf('!') > -1) {
+    mask += '~`!@#$%^&*()_+-={}[]:";\'<>?,./|\\';
+  }
+  var result = [];
+  for (var i = 0; i < len; i++) {
+    result.push(this.choice(mask));
+  }
+  return result.join('');
+};
+
+Lcg.prototype.nextBuffer = function (len) {
+  var arr = [];
+  var i;
+  for (i = 0; i < len; i++) {
+    arr.push(this.nextInt(256));
+  }
+  return bufferFrom(arr);
+};
+
+Lcg.prototype.choice = function (arr) {
+  var len = arr.length;
+  if (!len) {
+    throw new Error('choosing from empty array');
+  }
+  return arr[this.nextInt(len)];
+};
+
+/**
+ * Ordered queue which returns items consecutively.
+ *
+ * This is actually a heap by index, with the added requirements that elements
+ * can only be retrieved consecutively.
+ */
+function OrderedQueue() {
+  this._index = 0;
+  this._items = [];
+}
+
+OrderedQueue.prototype.push = function (item) {
+  var items = this._items;
+  var i = items.length | 0;
+  var j;
+  items.push(item);
+  while (i > 0 && items[i].index < items[j = ((i - 1) >> 1)].index) {
+    item = items[i];
+    items[i] = items[j];
+    items[j] = item;
+    i = j;
+  }
+};
+
+OrderedQueue.prototype.pop = function () {
+  var items = this._items;
+  var len = (items.length - 1) | 0;
+  var first = items[0];
+  if (!first || first.index > this._index) {
+    return null;
+  }
+  this._index++;
+  if (!len) {
+    items.pop();
+    return first;
+  }
+  items[0] = items.pop();
+  var mid = len >> 1;
+  var i = 0;
+  var i1, i2, j, item, c, c1, c2;
+  while (i < mid) {
+    item = items[i];
+    i1 = (i << 1) + 1;
+    i2 = (i + 1) << 1;
+    c1 = items[i1];
+    c2 = items[i2];
+    if (!c2 || c1.index <= c2.index) {
+      c = c1;
+      j = i1;
+    } else {
+      c = c2;
+      j = i2;
+    }
+    if (c.index >= item.index) {
+      break;
+    }
+    items[j] = item;
+    items[i] = c;
+    i = j;
+  }
+  return first;
+};
+
+/**
+ * A tap is a buffer which remembers what has been already read.
+ *
+ * It is optimized for performance, at the cost of failing silently when
+ * overflowing the buffer. This is a purposeful trade-off given the expected
+ * rarity of this case and the large performance hit necessary to enforce
+ * validity. See `isValid` below for more information.
+ */
+function Tap(buf, pos) {
+  this.buf = buf;
+  this.pos = pos | 0;
+  if (this.pos < 0) {
+    throw new Error('negative offset');
+  }
+}
+
+/**
+ * Check that the tap is in a valid state.
+ *
+ * For efficiency reasons, none of the methods below will fail if an overflow
+ * occurs (either read, skip, or write). For this reason, it is up to the
+ * caller to always check that the read, skip, or write was valid by calling
+ * this method.
+ */
+Tap.prototype.isValid = function () { return this.pos <= this.buf.length; };
+
+Tap.prototype._invalidate = function () { this.pos = this.buf.length + 1; };
+
+// Read, skip, write methods.
+//
+// These should fail silently when the buffer overflows. Note this is only
+// required to be true when the functions are decoding valid objects. For
+// example errors will still be thrown if a bad count is read, leading to a
+// negative position offset (which will typically cause a failure in
+// `readFixed`).
+
+Tap.prototype.readBoolean = function () { return !!this.buf[this.pos++]; };
+
+Tap.prototype.skipBoolean = function () { this.pos++; };
+
+Tap.prototype.writeBoolean = function (b) { this.buf[this.pos++] = !!b; };
+
+Tap.prototype.readInt = Tap.prototype.readLong = function () {
+  var n = 0;
+  var k = 0;
+  var buf = this.buf;
+  var b, h, f, fk;
+
+  do {
+    b = buf[this.pos++];
+    h = b & 0x80;
+    n |= (b & 0x7f) << k;
+    k += 7;
+  } while (h && k < 28);
+
+  if (h) {
+    // Switch to float arithmetic, otherwise we might overflow.
+    f = n;
+    fk = 268435456; // 2 ** 28.
+    do {
+      b = buf[this.pos++];
+      f += (b & 0x7f) * fk;
+      fk *= 128;
+    } while (b & 0x80);
+    return (f % 2 ? -(f + 1) : f) / 2;
+  }
+
+  return (n >> 1) ^ -(n & 1);
+};
+
+Tap.prototype.skipInt = Tap.prototype.skipLong = function () {
+  var buf = this.buf;
+  while (buf[this.pos++] & 0x80) {}
+};
+
+Tap.prototype.writeInt = Tap.prototype.writeLong = function (n) {
+  var buf = this.buf;
+  var f, m;
+
+  if (n >= -1073741824 && n < 1073741824) {
+    // Won't overflow, we can use integer arithmetic.
+    m = n >= 0 ? n << 1 : (~n << 1) | 1;
+    do {
+      buf[this.pos] = m & 0x7f;
+      m >>= 7;
+    } while (m && (buf[this.pos++] |= 0x80));
+  } else {
+    // We have to use slower floating arithmetic.
+    f = n >= 0 ? n * 2 : (-n * 2) - 1;
+    do {
+      buf[this.pos] = f & 0x7f;
+      f /= 128;
+    } while (f >= 1 && (buf[this.pos++] |= 0x80));
+  }
+  this.pos++;
+};
+
+Tap.prototype.readFloat = function () {
+  var buf = this.buf;
+  var pos = this.pos;
+  this.pos += 4;
+  if (this.pos > buf.length) {
+    return 0;
+  }
+  return this.buf.readFloatLE(pos);
+};
+
+Tap.prototype.skipFloat = function () { this.pos += 4; };
+
+Tap.prototype.writeFloat = function (f) {
+  var buf = this.buf;
+  var pos = this.pos;
+  this.pos += 4;
+  if (this.pos > buf.length) {
+    return;
+  }
+  return this.buf.writeFloatLE(f, pos);
+};
+
+Tap.prototype.readDouble = function () {
+  var buf = this.buf;
+  var pos = this.pos;
+  this.pos += 8;
+  if (this.pos > buf.length) {
+    return 0;
+  }
+  return this.buf.readDoubleLE(pos);
+};
+
+Tap.prototype.skipDouble = function () { this.pos += 8; };
+
+Tap.prototype.writeDouble = function (d) {
+  var buf = this.buf;
+  var pos = this.pos;
+  this.pos += 8;
+  if (this.pos > buf.length) {
+    return;
+  }
+  return this.buf.writeDoubleLE(d, pos);
+};
+
+Tap.prototype.readFixed = function (len) {
+  var pos = this.pos;
+  this.pos += len;
+  if (this.pos > this.buf.length) {
+    return;
+  }
+  var fixed = POOL.alloc(len);
+  this.buf.copy(fixed, 0, pos, pos + len);
+  return fixed;
+};
+
+Tap.prototype.skipFixed = function (len) { this.pos += len; };
+
+Tap.prototype.writeFixed = function (buf, len) {
+  len = len || buf.length;
+  var pos = this.pos;
+  this.pos += len;
+  if (this.pos > this.buf.length) {
+    return;
+  }
+  buf.copy(this.buf, pos, 0, len);
+};
+
+Tap.prototype.readBytes = function () {
+  var len = this.readLong();
+  if (len < 0) {
+    this._invalidate();
+    return;
+  }
+  return this.readFixed(len);
+};
+
+Tap.prototype.skipBytes = function () {
+  var len = this.readLong();
+  if (len < 0) {
+    this._invalidate();
+    return;
+  }
+  this.pos += len;
+};
+
+Tap.prototype.writeBytes = function (buf) {
+  var len = buf.length;
+  this.writeLong(len);
+  this.writeFixed(buf, len);
+};
+
+/* istanbul ignore else */
+if (typeof Buffer.prototype.utf8Slice == 'function') {
+  // Use this optimized function when available.
+  Tap.prototype.readString = function () {
+    var len = this.readLong();
+    if (len < 0) {
+      this._invalidate();
+      return '';
+    }
+    var pos = this.pos;
+    var buf = this.buf;
+    this.pos += len;
+    if (this.pos > buf.length) {
+      return;
+    }
+    return this.buf.utf8Slice(pos, pos + len);
+  };
+} else {
+  Tap.prototype.readString = function () {
+    var len = this.readLong();
+    if (len < 0) {
+      this._invalidate();
+      return '';
+    }
+    var pos = this.pos;
+    var buf = this.buf;
+    this.pos += len;
+    if (this.pos > buf.length) {
+      return;
+    }
+    return this.buf.slice(pos, pos + len).toString();
+  };
+}
+
+Tap.prototype.skipString = function () {
+  var len = this.readLong();
+  if (len < 0) {
+    this._invalidate();
+    return;
+  }
+  this.pos += len;
+};
+
+Tap.prototype.writeString = function (s) {
+  var len = Buffer.byteLength(s);
+  var buf = this.buf;
+  this.writeLong(len);
+  var pos = this.pos;
+  this.pos += len;
+  if (this.pos > buf.length) {
+    return;
+  }
+  if (len > 64 && typeof Buffer.prototype.utf8Write == 'function') {
+    // This method is roughly 50% faster than the manual implementation below
+    // for long strings (which is itself faster than the generic `Buffer#write`
+    // at least in most browsers, where `utf8Write` is not available).
+    buf.utf8Write(s, pos, len);
+  } else {
+    var i, l, c1, c2;
+    for (i = 0, l = len; i < l; i++) {
+      c1 = s.charCodeAt(i);
+      if (c1 < 0x80) {
+        buf[pos++] = c1;
+      } else if (c1 < 0x800) {
+        buf[pos++] = c1 >> 6 | 0xc0;
+        buf[pos++] = c1 & 0x3f | 0x80;
+      } else if (
+        (c1 & 0xfc00) === 0xd800 &&
+        ((c2 = s.charCodeAt(i + 1)) & 0xfc00) === 0xdc00
+      ) {
+        c1 = 0x10000 + ((c1 & 0x03ff) << 10) + (c2 & 0x03ff);
+        i++;
+        buf[pos++] = c1 >> 18 | 0xf0;
+        buf[pos++] = c1 >> 12 & 0x3f | 0x80;
+        buf[pos++] = c1 >> 6 & 0x3f | 0x80;
+        buf[pos++] = c1 & 0x3f | 0x80;
+      } else {
+        buf[pos++] = c1 >> 12 | 0xe0;
+        buf[pos++] = c1 >> 6 & 0x3f | 0x80;
+        buf[pos++] = c1 & 0x3f | 0x80;
+      }
+    }
+  }
+};
+
+/* istanbul ignore else */
+if (typeof Buffer.prototype.latin1Write == 'function') {
+  // `binaryWrite` has been renamed to `latin1Write` in Node v6.4.0, see
+  // https://github.com/nodejs/node/pull/7111. Note that the `'binary'`
+  // encoding argument still works however.
+  Tap.prototype.writeBinary = function (str, len) {
+    var pos = this.pos;
+    this.pos += len;
+    if (this.pos > this.buf.length) {
+      return;
+    }
+    this.buf.latin1Write(str, pos, len);
+  };
+} else if (typeof Buffer.prototype.binaryWrite == 'function') {
+  Tap.prototype.writeBinary = function (str, len) {
+    var pos = this.pos;
+    this.pos += len;
+    if (this.pos > this.buf.length) {
+      return;
+    }
+    this.buf.binaryWrite(str, pos, len);
+  };
+} else {
+  // Slowest implementation.
+  Tap.prototype.writeBinary = function (s, len) {
+    var pos = this.pos;
+    this.pos += len;
+    if (this.pos > this.buf.length) {
+      return;
+    }
+    this.buf.write(s, pos, len, 'binary');
+  };
+}
+
+// Binary comparison methods.
+//
+// These are not guaranteed to consume the objects they are comparing when
+// returning a non-zero result (allowing for performance benefits), so no other
+// operations should be done on either tap after a compare returns a non-zero
+// value. Also, these methods do not have the same silent failure requirement
+// as read, skip, and write since they are assumed to be called on valid
+// buffers.
+
+Tap.prototype.matchBoolean = function (tap) {
+  return this.buf[this.pos++] - tap.buf[tap.pos++];
+};
+
+Tap.prototype.matchInt = Tap.prototype.matchLong = function (tap) {
+  var n1 = this.readLong();
+  var n2 = tap.readLong();
+  return n1 === n2 ? 0 : (n1 < n2 ? -1 : 1);
+};
+
+Tap.prototype.matchFloat = function (tap) {
+  var n1 = this.readFloat();
+  var n2 = tap.readFloat();
+  return n1 === n2 ? 0 : (n1 < n2 ? -1 : 1);
+};
+
+Tap.prototype.matchDouble = function (tap) {
+  var n1 = this.readDouble();
+  var n2 = tap.readDouble();
+  return n1 === n2 ? 0 : (n1 < n2 ? -1 : 1);
+};
+
+Tap.prototype.matchFixed = function (tap, len) {
+  return this.readFixed(len).compare(tap.readFixed(len));
+};
+
+Tap.prototype.matchBytes = Tap.prototype.matchString = function (tap) {
+  var l1 = this.readLong();
+  var p1 = this.pos;
+  this.pos += l1;
+  var l2 = tap.readLong();
+  var p2 = tap.pos;
+  tap.pos += l2;
+  var b1 = this.buf.slice(p1, this.pos);
+  var b2 = tap.buf.slice(p2, tap.pos);
+  return b1.compare(b2);
+};
+
+// Functions for supporting custom long classes.
+//
+// The two following methods allow the long implementations to not have to
+// worry about Avro's zigzag encoding, we directly expose longs as unpacked.
+
+Tap.prototype.unpackLongBytes = function () {
+  var res = newBuffer(8);
+  var n = 0;
+  var i = 0; // Byte index in target buffer.
+  var j = 6; // Bit offset in current target buffer byte.
+  var buf = this.buf;
+  var b, neg;
+
+  b = buf[this.pos++];
+  neg = b & 1;
+  res.fill(0);
+
+  n |= (b & 0x7f) >> 1;
+  while (b & 0x80) {
+    b = buf[this.pos++];
+    n |= (b & 0x7f) << j;
+    j += 7;
+    if (j >= 8) {
+      // Flush byte.
+      j -= 8;
+      res[i++] = n;
+      n >>= 8;
+    }
+  }
+  res[i] = n;
+
+  if (neg) {
+    invert(res, 8);
+  }
+
+  return res;
+};
+
+Tap.prototype.packLongBytes = function (buf) {
+  var neg = (buf[7] & 0x80) >> 7;
+  var res = this.buf;
+  var j = 1;
+  var k = 0;
+  var m = 3;
+  var n;
+
+  if (neg) {
+    invert(buf, 8);
+    n = 1;
+  } else {
+    n = 0;
+  }
+
+  var parts = [
+    buf.readUIntLE(0, 3),
+    buf.readUIntLE(3, 3),
+    buf.readUIntLE(6, 2)
+  ];
+  // Not reading more than 24 bits because we need to be able to combine the
+  // "carry" bits from the previous part and JavaScript only supports bitwise
+  // operations on 32 bit integers.
+  while (m && !parts[--m]) {} // Skip trailing 0s.
+
+  // Leading parts (if any), we never bail early here since we need the
+  // continuation bit to be set.
+  while (k < m) {
+    n |= parts[k++] << j;
+    j += 24;
+    while (j > 7) {
+      res[this.pos++] = (n & 0x7f) | 0x80;
+      n >>= 7;
+      j -= 7;
+    }
+  }
+
+  // Final part, similar to normal packing aside from the initial offset.
+  n |= parts[m] << j;
+  do {
+    res[this.pos] = n & 0x7f;
+    n >>= 7;
+  } while (n && (res[this.pos++] |= 0x80));
+  this.pos++;
+
+  // Restore original buffer (could make this optional?).
+  if (neg) {
+    invert(buf, 8);
+  }
+};
+
+// Helpers.
+
+/**
+ * Invert all bits in a buffer.
+ *
+ * @param buf {Buffer} Non-empty buffer to invert.
+ * @param len {Number} Buffer length (must be positive).
+ */
+function invert(buf, len) {
+  while (len--) {
+    buf[len] = ~buf[len];
+  }
+}
+
+
+module.exports = {
+  abstractFunction: abstractFunction,
+  addDeprecatedGetters: addDeprecatedGetters,
+  bufferFrom: bufferFrom,
+  capitalize: capitalize,
+  copyOwnProperties: copyOwnProperties,
+  getHash: getHash,
+  compare: compare,
+  getOption: getOption,
+  impliedNamespace: impliedNamespace,
+  isValidName: isValidName,
+  jsonEnd: jsonEnd,
+  newBuffer: newBuffer,
+  objectValues: objectValues,
+  qualify: qualify,
+  toMap: toMap,
+  singleIndexOf: singleIndexOf,
+  hasDuplicates: hasDuplicates,
+  unqualify: unqualify,
+  BufferPool: BufferPool,
+  Lcg: Lcg,
+  OrderedQueue: OrderedQueue,
+  Tap: Tap
+};
+
+
+/***/ }),
 /* 778 */,
 /* 779 */,
 /* 780 */
@@ -32324,7 +39982,257 @@ module.exports = new Type('tag:yaml.org,2002:null', {
 /* 811 */,
 /* 812 */,
 /* 813 */,
-/* 814 */,
+/* 814 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const avsc = __webpack_require__(162);
+
+const BYTES_PATTERN = '^[\u0000-\u00ff]*$';
+const INT_MIN = Math.pow(-2, 31);
+const INT_MAX = Math.pow(2, 31) - 1;
+const LONG_MIN = Math.pow(-2, 63);
+const LONG_MAX = Math.pow(2, 63) - 1;
+
+const typeMappings = {
+  null: 'null',
+  boolean: 'boolean',
+  int: 'integer',
+  long: 'integer',
+  float: 'number',
+  double: 'number',
+  bytes: 'string',
+  string: 'string',
+  fixed: 'string',
+  map: 'object',
+  array: 'array',
+  enum: 'string',
+  record: 'object',
+  uuid: 'string',
+};
+
+const commonAttributesMapping = (avroDefinition, jsonSchema, isTopLevel) => {
+  if (avroDefinition.doc) jsonSchema.description = avroDefinition.doc;
+  if (avroDefinition.default !== undefined) jsonSchema.default = avroDefinition.default;
+
+  const fullyQualifiedName = getFullyQualifiedName(avroDefinition);
+  if (isTopLevel && fullyQualifiedName !== undefined) {
+    jsonSchema['x-parser-schema-id'] = fullyQualifiedName;
+  }
+};
+
+function getFullyQualifiedName(avroDefinition) {
+  let name;
+
+  if (avroDefinition.name) {
+    if (avroDefinition.namespace) {
+      name = `${avroDefinition.namespace}.${avroDefinition.name}`;
+    } else {
+      name = avroDefinition.name;
+    }
+  }
+
+  return name;
+}
+
+/**
+ * Enrich the parent's required attribute with the required record attributes
+ * @param fieldDefinition the actual field definition
+ * @param parentJsonSchema the parent json schema which contains the required property to enrich
+ * @param haveDefaultValue we assure that a required field does not have a default value
+ */
+const requiredAttributesMapping = (fieldDefinition, parentJsonSchema, haveDefaultValue) => {
+  const isUnionWithNull = Array.isArray(fieldDefinition.type) && fieldDefinition.type.includes('null');
+
+  // we assume that a union type without null and a field without default value is required
+  if (!isUnionWithNull && !haveDefaultValue) {
+    parentJsonSchema.required = parentJsonSchema.required || [];
+    parentJsonSchema.required.push(fieldDefinition.name);
+  }
+};
+
+function extractNonNullableTypeIfNeeded(typeInput, jsonSchemaInput) {
+  let type = typeInput;
+  let jsonSchema = jsonSchemaInput;
+  // Map example to first non-null type
+  if (Array.isArray(typeInput) && typeInput.length > 0) {
+    const pickSecondType = typeInput.length > 1 && typeInput[0] === 'null';
+    type = typeInput[+pickSecondType];
+    jsonSchema = jsonSchema.oneOf[0];
+  }
+  return {type, jsonSchema};
+}
+
+const exampleAttributeMapping = (type, example, jsonSchema) => {
+  if (example === undefined || jsonSchema.examples || Array.isArray(type)) return;
+
+  switch (type) {
+  case 'boolean':
+    jsonSchema.examples = [example === 'true'];
+    break;
+  case 'int':
+    jsonSchema.examples = [parseInt(example, 10)];
+    break;
+  default:
+    jsonSchema.examples = [example];
+  }
+};
+
+const additionalAttributesMapping = (typeInput, avroDefinition, jsonSchemaInput) => {
+  const __ret = extractNonNullableTypeIfNeeded(typeInput, jsonSchemaInput);
+  const type = __ret.type;
+  const jsonSchema = __ret.jsonSchema;
+
+  exampleAttributeMapping(type, avroDefinition.example, jsonSchema);
+
+  function setAdditionalAttribute(...names) {
+    names.forEach(name => {
+      let isValueCoherent = true;
+      if (name === 'minLength' || name === 'maxLength') {
+        isValueCoherent = avroDefinition[name] > -1;
+      } else if (name === 'multipleOf') {
+        isValueCoherent = avroDefinition[name] > 0;
+      }
+      if (avroDefinition[name] !== undefined && isValueCoherent) jsonSchema[name] = avroDefinition[name];
+    });
+  }
+
+  switch (type) {
+  case 'int':   // int, long, float, and double must support the attributes bellow
+  case 'long':
+  case 'float':
+  case 'double':
+    setAdditionalAttribute('minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf');
+    break;
+  case 'string':
+    jsonSchema.format = avroDefinition.logicalType;
+    setAdditionalAttribute('pattern', 'minLength', 'maxLength');
+    break;
+  case 'array':
+    setAdditionalAttribute('minItems', 'maxItems', 'uniqueItems');
+    break;
+  default:
+    break;
+  }
+};
+
+function validateAvroSchema(avroDefinition) {
+  // don't need to use the output from parsing the
+  //  avro definition - we're just using this as a
+  //  validator as this will throw an exception if
+  //  there are any problems with the definition
+  avsc.Type.forSchema(avroDefinition);
+}
+
+/**
+ * Cache the passed value under the given key. If the key is undefined the value will not be cached. This function
+ * uses mutation of the passed cache object rather than a copy on write cache strategy.
+ *
+ * @param cache Map<String, JsonSchema> the cache to store the JsonSchema
+ * @param key String | Undefined - the fully qualified name of an avro record
+ * @param value JsonSchema - The json schema from the avro record
+ */
+function cacheAvroRecordDef(cache, key, value) {
+  if (key) {
+    cache[key] = value;
+  }
+}
+
+async function convertAvroToJsonSchema(avroDefinition, isTopLevel, recordCache = {}) {
+  const jsonSchema = {};
+  const isUnion = Array.isArray(avroDefinition);
+
+  if (isUnion) {
+    jsonSchema.oneOf = [];
+    let nullDef = null;
+    for (const avroDef of avroDefinition) {
+      const def = await convertAvroToJsonSchema(avroDef, isTopLevel, recordCache);
+      // avroDef can be { type: 'int', default: 1 } and this is why avroDef.type has priority here
+      const defType = avroDef.type || avroDef;
+      // To prefer non-null values in the examples skip null definition here and push it as the last element after loop
+      if (defType === 'null') {
+        nullDef = def;
+      } else {
+        jsonSchema.oneOf.push(def);
+        const qualifiedName = getFullyQualifiedName(avroDef);
+        cacheAvroRecordDef(recordCache, qualifiedName, def);
+      }
+    }
+    if (nullDef) jsonSchema.oneOf.push(nullDef);
+
+    return jsonSchema;
+  }
+
+  // Avro definition can be a string (e.g. "int")
+  // or an object like { type: "int" }
+  const type = avroDefinition.type || avroDefinition;
+  jsonSchema.type = typeMappings[type];
+
+  switch (type) {
+  case 'int':
+    jsonSchema.minimum = INT_MIN;
+    jsonSchema.maximum = INT_MAX;
+    break;
+  case 'long':
+    jsonSchema.minimum = LONG_MIN;
+    jsonSchema.maximum = LONG_MAX;
+    break;
+  case 'bytes':
+    jsonSchema.pattern = BYTES_PATTERN;
+    break;
+  case 'fixed':
+    jsonSchema.pattern = BYTES_PATTERN;
+    jsonSchema.minLength = avroDefinition.size;
+    jsonSchema.maxLength = avroDefinition.size;
+    break;
+  case 'map':
+    jsonSchema.additionalProperties = await convertAvroToJsonSchema(avroDefinition.values, false);
+    break;
+  case 'array':
+    jsonSchema.items = await convertAvroToJsonSchema(avroDefinition.items, false);
+    break;
+  case 'enum':
+    jsonSchema.enum = avroDefinition.symbols;
+    break;
+  case 'float':   // float and double must support the format attribute from the avro type
+  case 'double':
+    jsonSchema.format = type;
+    break;
+  case 'record':
+    const propsMap = new Map();
+    for (const field of avroDefinition.fields) {
+      // If the type is a sub schema it will have been stored in the cache.
+      if (recordCache[field.type]) {
+        propsMap.set(field.name, recordCache[field.type]);
+      } else {
+        const def = await convertAvroToJsonSchema(field.type, false, recordCache);
+
+        requiredAttributesMapping(field, jsonSchema, field.default !== undefined);
+        commonAttributesMapping(field, def, false);
+        additionalAttributesMapping(field.type, field, def);
+
+        propsMap.set(field.name, def);
+        // If there is a name for the sub record cache it under the name.
+        const qualifiedFieldName = getFullyQualifiedName(field.type);
+        cacheAvroRecordDef(recordCache, qualifiedFieldName, def);
+      }
+    }
+    jsonSchema.properties = Object.fromEntries(propsMap.entries());
+    break;
+  }
+
+  commonAttributesMapping(avroDefinition, jsonSchema, isTopLevel);
+  additionalAttributesMapping(type, avroDefinition, jsonSchema);
+
+  return jsonSchema;
+}
+
+module.exports.avroToJsonSchema = async function avroToJsonSchema(avroDefinition) {
+  validateAvroSchema(avroDefinition);
+  return convertAvroToJsonSchema(avroDefinition, true);
+};
+
+
+/***/ }),
 /* 815 */,
 /* 816 */,
 /* 817 */,
@@ -37607,7 +45515,71 @@ module.exports = {
 
 /***/ }),
 /* 918 */,
-/* 919 */,
+/* 919 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+"use strict";
+/* jshint node: true */
+
+
+
+/**
+ * Filesystem specifics.
+ *
+ * This module contains functions only used by node.js. It is shimmed by
+ * another module when `avsc` is required from `browserify`.
+ */
+
+var fs = __webpack_require__(747),
+    path = __webpack_require__(622);
+
+/** Default (asynchronous) file loading function for assembling IDLs. */
+function createImportHook() {
+  var imports = {};
+  return function (fpath, kind, cb) {
+    fpath = path.resolve(fpath);
+    if (imports[fpath]) {
+      // Already imported, return nothing to avoid duplicating attributes.
+      process.nextTick(cb);
+      return;
+    }
+    imports[fpath] = true;
+    fs.readFile(fpath, {encoding: 'utf8'}, cb);
+  };
+}
+
+/**
+ * Synchronous file loading function for assembling IDLs.
+ *
+ * This is only for internal use (inside `specs.parse`). The returned
+ * hook should only be called on paths that are guaranteed to exist (where
+ * `fs.readFileSync` will not throw, otherwise the calling `assemble` call will
+ * throw rather than return the error to the callback).
+ */
+function createSyncImportHook() {
+  var imports = {};
+  return function (fpath, kind, cb) {
+    fpath = path.resolve(fpath);
+    if (imports[fpath]) {
+      cb();
+    } else {
+      imports[fpath] = true;
+      cb(null, fs.readFileSync(fpath, {encoding: 'utf8'}));
+    }
+  };
+}
+
+
+module.exports = {
+  createImportHook: createImportHook,
+  createSyncImportHook: createSyncImportHook,
+  // Proxy a few methods to better shim them for browserify.
+  existsSync: fs.existsSync,
+  readFileSync: fs.readFileSync
+};
+
+
+/***/ }),
 /* 920 */,
 /* 921 */
 /***/ (function(module, __unusedexports, __webpack_require__) {
@@ -37832,7 +45804,661 @@ module.exports = {
 
 /***/ }),
 /* 928 */,
-/* 929 */,
+/* 929 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+"use strict";
+/* jshint node: true */
+
+// TODO: Add streams which prefix each record with its length.
+
+
+
+/**
+ * This module defines custom streams to write and read Avro files.
+ *
+ * In particular, the `Block{En,De}coder` streams are able to deal with Avro
+ * container files. None of the streams below depend on the filesystem however,
+ * this way they can also be used in the browser (for example to parse HTTP
+ * responses).
+ */
+
+var types = __webpack_require__(453),
+    utils = __webpack_require__(777),
+    stream = __webpack_require__(794),
+    util = __webpack_require__(669),
+    zlib = __webpack_require__(761);
+
+
+var OPTS = {namespace: 'org.apache.avro.file'};
+
+var LONG_TYPE = types.Type.forSchema('long', OPTS);
+
+var MAP_BYTES_TYPE = types.Type.forSchema({type: 'map', values: 'bytes'}, OPTS);
+
+var HEADER_TYPE = types.Type.forSchema({
+  name: 'Header',
+  type: 'record',
+  fields : [
+    {name: 'magic', type: {type: 'fixed', name: 'Magic', size: 4}},
+    {name: 'meta', type: MAP_BYTES_TYPE},
+    {name: 'sync', type: {type: 'fixed', name: 'Sync', size: 16}}
+  ]
+}, OPTS);
+
+var BLOCK_TYPE = types.Type.forSchema({
+  name: 'Block',
+  type: 'record',
+  fields : [
+    {name: 'count', type: 'long'},
+    {name: 'data', type: 'bytes'},
+    {name: 'sync', type: 'Sync'}
+  ]
+}, OPTS);
+
+// First 4 bytes of an Avro object container file.
+var MAGIC_BYTES = utils.bufferFrom('Obj\x01');
+
+// Convenience.
+var f = util.format;
+var Tap = utils.Tap;
+
+
+/** Duplex stream for decoding fragments. */
+function RawDecoder(schema, opts) {
+  opts = opts || {};
+
+  var noDecode = !!opts.noDecode;
+  stream.Duplex.call(this, {
+    readableObjectMode: !noDecode,
+    allowHalfOpen: false
+  });
+
+  this._type = types.Type.forSchema(schema);
+  this._tap = new Tap(utils.newBuffer(0));
+  this._writeCb = null;
+  this._needPush = false;
+  this._readValue = createReader(noDecode, this._type);
+  this._finished = false;
+
+  this.on('finish', function () {
+    this._finished = true;
+    this._read();
+  });
+}
+util.inherits(RawDecoder, stream.Duplex);
+
+RawDecoder.prototype._write = function (chunk, encoding, cb) {
+  // Store the write callback and call it when we are done decoding all records
+  // in this chunk. If we call it right away, we risk loading the entire input
+  // in memory. We only need to store the latest callback since the stream API
+  // guarantees that `_write` won't be called again until we call the previous.
+  this._writeCb = cb;
+
+  var tap = this._tap;
+  tap.buf = Buffer.concat([tap.buf.slice(tap.pos), chunk]);
+  tap.pos = 0;
+  if (this._needPush) {
+    this._needPush = false;
+    this._read();
+  }
+};
+
+RawDecoder.prototype._read = function () {
+  this._needPush = false;
+
+  var tap = this._tap;
+  var pos = tap.pos;
+  var val = this._readValue(tap);
+  if (tap.isValid()) {
+    this.push(val);
+  } else if (!this._finished) {
+    tap.pos = pos;
+    this._needPush = true;
+    if (this._writeCb) {
+      // This should only ever be false on the first read, and only if it
+      // happens before the first write.
+      this._writeCb();
+    }
+  } else {
+    this.push(null);
+  }
+};
+
+
+/** Duplex stream for decoding object container files. */
+function BlockDecoder(opts) {
+  opts = opts || {};
+
+  var noDecode = !!opts.noDecode;
+  stream.Duplex.call(this, {
+    allowHalfOpen: true, // For async decompressors.
+    readableObjectMode: !noDecode
+  });
+
+  this._rType = opts.readerSchema !== undefined ?
+    types.Type.forSchema(opts.readerSchema) :
+    undefined;
+  this._wType = null;
+  this._codecs = opts.codecs;
+  this._codec = undefined;
+  this._parseHook = opts.parseHook;
+  this._tap = new Tap(utils.newBuffer(0));
+  this._blockTap = new Tap(utils.newBuffer(0));
+  this._syncMarker = null;
+  this._readValue = null;
+  this._noDecode = noDecode;
+  this._queue = new utils.OrderedQueue();
+  this._decompress = null; // Decompression function.
+  this._index = 0; // Next block index.
+  this._remaining = undefined; // In the current block.
+  this._needPush = false;
+  this._finished = false;
+
+  this.on('finish', function () {
+    this._finished = true;
+    if (this._needPush) {
+      this._read();
+    }
+  });
+}
+util.inherits(BlockDecoder, stream.Duplex);
+
+BlockDecoder.defaultCodecs = function () {
+  return {
+    'null': function (buf, cb) { cb(null, buf); },
+    'deflate': zlib.inflateRaw
+  };
+};
+
+BlockDecoder.getDefaultCodecs = BlockDecoder.defaultCodecs;
+
+BlockDecoder.prototype._decodeHeader = function () {
+  var tap = this._tap;
+  if (tap.buf.length < MAGIC_BYTES.length) {
+    // Wait until more data arrives.
+    return false;
+  }
+
+  if (!MAGIC_BYTES.equals(tap.buf.slice(0, MAGIC_BYTES.length))) {
+    this.emit('error', new Error('invalid magic bytes'));
+    return false;
+  }
+
+  var header = HEADER_TYPE._read(tap);
+  if (!tap.isValid()) {
+    return false;
+  }
+
+  this._codec = (header.meta['avro.codec'] || 'null').toString();
+  var codecs = this._codecs || BlockDecoder.getDefaultCodecs();
+  this._decompress = codecs[this._codec];
+  if (!this._decompress) {
+    this.emit('error', new Error(f('unknown codec: %s', this._codec)));
+    return;
+  }
+
+  try {
+    var schema = JSON.parse(header.meta['avro.schema'].toString());
+    if (this._parseHook) {
+      schema = this._parseHook(schema);
+    }
+    this._wType = types.Type.forSchema(schema);
+  } catch (err) {
+    this.emit('error', err);
+    return;
+  }
+
+  try {
+    this._readValue = createReader(this._noDecode, this._wType, this._rType);
+  } catch (err) {
+    this.emit('error', err);
+    return;
+  }
+
+  this._syncMarker = header.sync;
+  this.emit('metadata', this._wType, this._codec, header);
+  return true;
+};
+
+BlockDecoder.prototype._write = function (chunk, encoding, cb) {
+  var tap = this._tap;
+  tap.buf = Buffer.concat([tap.buf, chunk]);
+  tap.pos = 0;
+
+  if (!this._decodeHeader()) {
+    process.nextTick(cb);
+    return;
+  }
+
+  // We got the header, switch to block decoding mode. Also, call it directly
+  // in case we already have all the data (in which case `_write` wouldn't get
+  // called anymore).
+  this._write = this._writeChunk;
+  this._write(utils.newBuffer(0), encoding, cb);
+};
+
+BlockDecoder.prototype._writeChunk = function (chunk, encoding, cb) {
+  var tap = this._tap;
+  tap.buf = Buffer.concat([tap.buf.slice(tap.pos), chunk]);
+  tap.pos = 0;
+
+  var nBlocks = 1;
+  var block;
+  while ((block = tryReadBlock(tap))) {
+    if (!this._syncMarker.equals(block.sync)) {
+      this.emit('error', new Error('invalid sync marker'));
+      return;
+    }
+    nBlocks++;
+    this._decompress(
+      block.data,
+      this._createBlockCallback(block.data.length, block.count, chunkCb)
+    );
+  }
+  chunkCb();
+
+  function chunkCb() {
+    if (!--nBlocks) {
+      cb();
+    }
+  }
+};
+
+BlockDecoder.prototype._createBlockCallback = function (size, count, cb) {
+  var self = this;
+  var index = this._index++;
+
+  return function (cause, data) {
+    if (cause) {
+      var err = new Error(f('%s codec decompression error', self._codec));
+      err.cause = cause;
+      self.emit('error', err);
+      cb();
+    } else {
+      self.emit('block', new BlockInfo(count, data.length, size));
+      self._queue.push(new BlockData(index, data, cb, count));
+      if (self._needPush) {
+        self._read();
+      }
+    }
+  };
+};
+
+BlockDecoder.prototype._read = function () {
+  this._needPush = false;
+
+  var tap = this._blockTap;
+  if (!this._remaining) {
+    var data = this._queue.pop();
+    if (!data || !data.count) {
+      if (this._finished) {
+        this.push(null);
+      } else {
+        this._needPush = true;
+      }
+      if (data) {
+        data.cb();
+      }
+      return; // Wait for more data.
+    }
+    data.cb();
+    this._remaining = data.count;
+    tap.buf = data.buf;
+    tap.pos = 0;
+  }
+
+  this._remaining--;
+  var val;
+  try {
+    val = this._readValue(tap);
+    if (!tap.isValid()) {
+      throw new Error('truncated block');
+    }
+  } catch (err) {
+    this._remaining = 0;
+    this.emit('error', err); // Corrupt data.
+    return;
+  }
+  this.push(val);
+};
+
+
+/** Duplex stream for encoding. */
+function RawEncoder(schema, opts) {
+  opts = opts || {};
+
+  stream.Transform.call(this, {
+    writableObjectMode: true,
+    allowHalfOpen: false
+  });
+
+  this._type = types.Type.forSchema(schema);
+  this._writeValue = function (tap, val) {
+    try {
+      this._type._write(tap, val);
+    } catch (err) {
+      this.emit('typeError', err, val, this._type);
+    }
+  };
+  this._tap = new Tap(utils.newBuffer(opts.batchSize || 65536));
+
+  this.on('typeError', function (err) { this.emit('error', err); });
+}
+util.inherits(RawEncoder, stream.Transform);
+
+RawEncoder.prototype._transform = function (val, encoding, cb) {
+  var tap = this._tap;
+  var buf = tap.buf;
+  var pos = tap.pos;
+
+  this._writeValue(tap, val);
+  if (!tap.isValid()) {
+    if (pos) {
+      // Emit any valid data.
+      this.push(copyBuffer(tap.buf, 0, pos));
+    }
+    var len = tap.pos - pos;
+    if (len > buf.length) {
+      // Not enough space for last written object, need to resize.
+      tap.buf = utils.newBuffer(2 * len);
+    }
+    tap.pos = 0;
+    this._writeValue(tap, val); // Rewrite last failed write.
+  }
+
+  cb();
+};
+
+RawEncoder.prototype._flush = function (cb) {
+  var tap = this._tap;
+  var pos = tap.pos;
+  if (pos) {
+    // This should only ever be false if nothing is written to the stream.
+    this.push(tap.buf.slice(0, pos));
+  }
+  cb();
+};
+
+
+/**
+ * Duplex stream to write object container files.
+ *
+ * @param schema
+ * @param opts {Object}
+ *
+ *  + `blockSize`, uncompressed.
+ *  + `codec`
+ *  + `codecs`
+ *  + `metadata``
+ *  + `noCheck`
+ *  + `omitHeader`, useful to append to an existing block file.
+ */
+function BlockEncoder(schema, opts) {
+  opts = opts || {};
+
+  stream.Duplex.call(this, {
+    allowHalfOpen: true, // To support async compressors.
+    writableObjectMode: true
+  });
+
+  var type;
+  if (types.Type.isType(schema)) {
+    type = schema;
+    schema = undefined;
+  } else {
+    // Keep full schema to be able to write it to the header later.
+    type = types.Type.forSchema(schema);
+  }
+
+  this._schema = schema;
+  this._type = type;
+  this._writeValue = function (tap, val) {
+    try {
+      this._type._write(tap, val);
+    } catch (err) {
+      this.emit('typeError', err, val, this._type);
+      return false;
+    }
+    return true;
+  };
+  this._blockSize = opts.blockSize || 65536;
+  this._tap = new Tap(utils.newBuffer(this._blockSize));
+  this._codecs = opts.codecs;
+  this._codec = opts.codec || 'null';
+  this._blockCount = 0;
+  this._syncMarker = opts.syncMarker || new utils.Lcg().nextBuffer(16);
+  this._queue = new utils.OrderedQueue();
+  this._pending = 0;
+  this._finished = false;
+  this._needHeader = false;
+  this._needPush = false;
+
+  this._metadata = opts.metadata || {};
+  if (!MAP_BYTES_TYPE.isValid(this._metadata)) {
+    throw new Error('invalid metadata');
+  }
+
+  var codec = this._codec;
+  this._compress = (this._codecs || BlockEncoder.getDefaultCodecs())[codec];
+  if (!this._compress) {
+    throw new Error(f('unsupported codec: %s', codec));
+  }
+
+  if (opts.omitHeader !== undefined) { // Legacy option.
+    opts.writeHeader = opts.omitHeader ? 'never' : 'auto';
+  }
+  switch (opts.writeHeader) {
+    case false:
+    case 'never':
+      break;
+    case undefined: // Backwards-compatibility (eager default would be better).
+    case 'auto':
+      this._needHeader = true;
+      break;
+    default:
+      this._writeHeader();
+  }
+
+  this.on('finish', function () {
+    this._finished = true;
+    if (this._blockCount) {
+      this._flushChunk();
+    } else if (this._finished && this._needPush) {
+      // We don't need to check `_isPending` since `_blockCount` is always
+      // positive after the first flush.
+      this.push(null);
+    }
+  });
+
+  this.on('typeError', function (err) { this.emit('error', err); });
+}
+util.inherits(BlockEncoder, stream.Duplex);
+
+BlockEncoder.defaultCodecs = function () {
+  return {
+    'null': function (buf, cb) { cb(null, buf); },
+    'deflate': zlib.deflateRaw
+  };
+};
+
+BlockEncoder.getDefaultCodecs = BlockEncoder.defaultCodecs;
+
+BlockEncoder.prototype._writeHeader = function () {
+  var schema = JSON.stringify(
+    this._schema ? this._schema : this._type.getSchema({exportAttrs: true})
+  );
+  var meta = utils.copyOwnProperties(
+    this._metadata,
+    {'avro.schema': utils.bufferFrom(schema), 'avro.codec': utils.bufferFrom(this._codec)},
+    true // Overwrite.
+  );
+  var Header = HEADER_TYPE.getRecordConstructor();
+  var header = new Header(MAGIC_BYTES, meta, this._syncMarker);
+  this.push(header.toBuffer());
+};
+
+BlockEncoder.prototype._write = function (val, encoding, cb) {
+  if (this._needHeader) {
+    this._writeHeader();
+    this._needHeader = false;
+  }
+
+  var tap = this._tap;
+  var pos = tap.pos;
+  var flushing = false;
+
+  if (this._writeValue(tap, val)) {
+    if (!tap.isValid()) {
+      if (pos) {
+        this._flushChunk(pos, cb);
+        flushing = true;
+      }
+      var len = tap.pos - pos;
+      if (len > this._blockSize) {
+        // Not enough space for last written object, need to resize.
+        this._blockSize = len * 2;
+      }
+      tap.buf = utils.newBuffer(this._blockSize);
+      tap.pos = 0;
+      this._writeValue(tap, val); // Rewrite last failed write.
+    }
+    this._blockCount++;
+  } else {
+    tap.pos = pos;
+  }
+
+  if (!flushing) {
+    cb();
+  }
+};
+
+BlockEncoder.prototype._flushChunk = function (pos, cb) {
+  var tap = this._tap;
+  pos = pos || tap.pos;
+  this._compress(tap.buf.slice(0, pos), this._createBlockCallback(pos, cb));
+  this._blockCount = 0;
+};
+
+BlockEncoder.prototype._read = function () {
+  var self = this;
+  var data = this._queue.pop();
+  if (!data) {
+    if (this._finished && !this._pending) {
+      process.nextTick(function () { self.push(null); });
+    } else {
+      this._needPush = true;
+    }
+    return;
+  }
+
+  this.push(LONG_TYPE.toBuffer(data.count, true));
+  this.push(LONG_TYPE.toBuffer(data.buf.length, true));
+  this.push(data.buf);
+  this.push(this._syncMarker);
+
+  if (!this._finished) {
+    data.cb();
+  }
+};
+
+BlockEncoder.prototype._createBlockCallback = function (size, cb) {
+  var self = this;
+  var index = this._index++;
+  var count = this._blockCount;
+  this._pending++;
+
+  return function (cause, data) {
+    if (cause) {
+      var err = new Error(f('%s codec compression error', self._codec));
+      err.cause = cause;
+      self.emit('error', err);
+      return;
+    }
+    self._pending--;
+    self.emit('block', new BlockInfo(count, size, data.length));
+    self._queue.push(new BlockData(index, data, cb, count));
+    if (self._needPush) {
+      self._needPush = false;
+      self._read();
+    }
+  };
+};
+
+
+// Helpers.
+
+/** Summary information about a block. */
+function BlockInfo(count, raw, compressed) {
+  this.valueCount = count;
+  this.rawDataLength = raw;
+  this.compressedDataLength = compressed;
+}
+
+/**
+ * An indexed block.
+ *
+ * This can be used to preserve block order since compression and decompression
+ * can cause some some blocks to be returned out of order.
+ */
+function BlockData(index, buf, cb, count) {
+  this.index = index;
+  this.buf = buf;
+  this.cb = cb;
+  this.count = count | 0;
+}
+
+/** Maybe get a block. */
+function tryReadBlock(tap) {
+  var pos = tap.pos;
+  var block = BLOCK_TYPE._read(tap);
+  if (!tap.isValid()) {
+    tap.pos = pos;
+    return null;
+  }
+  return block;
+}
+
+/** Create bytes consumer, either reading or skipping records. */
+function createReader(noDecode, writerType, readerType) {
+  if (noDecode) {
+    return (function (skipper) {
+      return function (tap) {
+        var pos = tap.pos;
+        skipper(tap);
+        return tap.buf.slice(pos, tap.pos);
+      };
+    })(writerType._skip);
+  } else if (readerType) {
+    var resolver = readerType.createResolver(writerType);
+    return function (tap) { return resolver._read(tap); };
+  } else {
+    return function (tap) { return writerType._read(tap); };
+  }
+}
+
+/** Copy a buffer. This avoids creating a slice of the original buffer. */
+function copyBuffer(buf, pos, len) {
+  var copy = utils.newBuffer(len);
+  buf.copy(copy, 0, pos, pos + len);
+  return copy;
+}
+
+
+module.exports = {
+  BLOCK_TYPE: BLOCK_TYPE, // For tests.
+  HEADER_TYPE: HEADER_TYPE, // Idem.
+  MAGIC_BYTES: MAGIC_BYTES, // Idem.
+  streams: {
+    BlockDecoder: BlockDecoder,
+    BlockEncoder: BlockEncoder,
+    RawDecoder: RawDecoder,
+    RawEncoder: RawEncoder
+  }
+};
+
+
+/***/ }),
 /* 930 */,
 /* 931 */,
 /* 932 */,

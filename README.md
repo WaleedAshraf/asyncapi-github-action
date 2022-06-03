@@ -1,11 +1,11 @@
 # AsyncAPI Github Action
-This action validates if the AsyncaAPI schema file is valid or not.
+This action validates if the AsyncAPI schema file is valid or not.
 
 ## Inputs
 
 ### `filepath`
 
-**Required** Path of the AsyncaAPI schema file. Default is `"asyncapi.yaml"` at root. Path starts root of github repo.
+**Required** Path of the AsyncAPI schema file. Default is `"asyncapi.yaml"` at root. Path starts root of github repo.
 For example, if you schema is in `schemas` folder.
 
 ```
