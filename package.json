@@ -1,6 +1,6 @@
 {
   "name": "asyncapi-github-action",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "Github action for AsyncAPI schema validation",
   "keywords": [
     "GitHub",
