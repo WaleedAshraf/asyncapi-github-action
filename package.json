@@ -1,6 +1,6 @@
 {
   "name": "asyncapi-github-action",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Github action for AsyncAPI schema validation",
   "keywords": [
     "GitHub",
@@ -24,13 +24,13 @@
     "test": "eslint index.js && jest"
   },
   "dependencies": {
-    "@actions/core": "^1.9.1",
-    "@asyncapi/avro-schema-parser": "^1.0.1",
-    "@asyncapi/parser": "^1.15.0"
+    "@actions/core": "^1.10.0",
+    "@asyncapi/avro-schema-parser": "^1.1.0",
+    "@asyncapi/parser": "^1.18.1"
   },
   "devDependencies": {
     "@types/jest": "^27.5.1",
-    "@zeit/ncc": "^0.22.3",
+    "@vercel/ncc": "^0.36.1",
     "eslint": "^8.16.0",
     "eslint-plugin-jest": "^26.2.2",
     "jest": "^28.1.0"
