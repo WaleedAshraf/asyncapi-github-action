@@ -14,10 +14,11 @@ async function run() {
     core.debug((new Date()).toTimeString())
   }
   catch (error) {
-    core.setFailed(error.message)
-    if(errorResponse === true) {
+    if(errorResponse == "true") {
+      core.debug("Identified Errors: ")
       core.debug(JSON.stringify(error))
     }
+    core.setFailed(error.message)
   }
 }
 
