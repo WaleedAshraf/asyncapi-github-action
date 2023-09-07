@@ -47671,7 +47671,7 @@ async function run() {
   catch (error) {
     if(errorResponse == "true") {
       console.log("Identified Errors: ")
-      console.log(JSON.stringify(error))
+      console.log(JSON.stringify(error.validationErrors, null, 2))
     }
     core.setFailed(error.message)
   }
