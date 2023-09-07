@@ -13,7 +13,13 @@ const validate = async (filePath) => {
   const fullPath = path.resolve(dir, filePath)
   console.log(`schema file fullpath:${fullPath}`)
   const data = fs.readFileSync(fullPath, 'utf8')
-  await parser.parse(data, {path: filePath})
+  let parsedObj = {};
+  try {
+    await parsedObj = parser.parse(data, {path: filePath});
+  } catch (err) {
+    console.log("Found errors: ");
+    console.log(JSON.stringify(parsedObj.diagnostics));
+  }
   console.log('schema is valid')
 }
 
