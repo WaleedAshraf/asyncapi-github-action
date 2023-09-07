@@ -2,8 +2,10 @@ const core = require('@actions/core')
 const validate = require('./validator')
 
 async function run() {
+  const filepath = core.getInput('filepath')
+  const errorResponse = core.getInput('errorResponse')
+    
   try {
-    const filepath = core.getInput('filepath')
     console.log('filepath', filepath)
 
     core.debug((new Date()).toTimeString())
@@ -12,6 +14,9 @@ async function run() {
   }
   catch (error) {
     core.setFailed(error.message)
+    if(errorResponse === true) {
+      core.debug(JSON.stringify(error))
+    }
   }
 }
 

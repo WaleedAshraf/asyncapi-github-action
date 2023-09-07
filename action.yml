@@ -6,6 +6,12 @@ inputs:
     description: 'Path of asyncapi schema file'
     required: true
     default: 'asyncapi.yaml'
+  errorResponse:
+    description: 'Output the detailed response of the validation'
+    default: false
+    type: boolean
+    required: true
+
 runs:
   using: 'node16'
   main: 'dist/index.js'

@@ -3,7 +3,7 @@ const avroSchemaParser = require('@asyncapi/avro-schema-parser')
 const fs = require('fs')
 const path = require('path')
 
-parser.registerSchemaParser(avroSchemaParser);
+parser.registerSchemaParser(avroSchemaParser)
 
 const validate = async (filePath) => {
   if (typeof filePath !== 'string')
@@ -13,13 +13,7 @@ const validate = async (filePath) => {
   const fullPath = path.resolve(dir, filePath)
   console.log(`schema file fullpath:${fullPath}`)
   const data = fs.readFileSync(fullPath, 'utf8')
-  let parsedObj = {};
-  try {
-    await parsedObj = parser.parse(data, {path: filePath});
-  } catch (err) {
-    console.log("Found errors: ");
-    console.log(JSON.stringify(parsedObj.diagnostics));
-  }
+  await parser.parse(data, {path: filePath})
   console.log('schema is valid')
 }
 
