@@ -47662,6 +47662,7 @@ async function run() {
     
   try {
     console.log('filepath', filepath)
+    console.log('errorResponse %s (%s)', errorResponse, typeof errorResponse)
 
     core.debug((new Date()).toTimeString())
     await validate(filepath)
