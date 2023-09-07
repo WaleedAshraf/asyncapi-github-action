@@ -47669,10 +47669,11 @@ async function run() {
     core.debug((new Date()).toTimeString())
   }
   catch (error) {
-    core.setFailed(error.message)
-    if(errorResponse === true) {
-      core.debug(JSON.stringify(error))
+    if(errorResponse == "true") {
+      console.log("Identified Errors: ")
+      console.log(JSON.stringify(error))
     }
+    core.setFailed(error.message)
   }
 }
 

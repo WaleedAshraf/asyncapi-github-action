@@ -15,8 +15,8 @@ async function run() {
   }
   catch (error) {
     if(errorResponse == "true") {
-      core.debug("Identified Errors: ")
-      core.debug(JSON.stringify(error))
+      console.log("Identified Errors: ")
+      console.log(JSON.stringify(error))
     }
     core.setFailed(error.message)
   }
