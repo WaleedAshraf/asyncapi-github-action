@@ -47357,7 +47357,7 @@ const avroSchemaParser = __nccwpck_require__(9067)
 const fs = __nccwpck_require__(7147)
 const path = __nccwpck_require__(1017)
 
-parser.registerSchemaParser(avroSchemaParser);
+parser.registerSchemaParser(avroSchemaParser)
 
 const validate = async (filePath) => {
   if (typeof filePath !== 'string')
@@ -47657,15 +47657,22 @@ const core = __nccwpck_require__(2186)
 const validate = __nccwpck_require__(2450)
 
 async function run() {
+  const filepath = core.getInput('filepath')
+  const errorResponse = core.getInput('errorResponse')
+    
   try {
-    const filepath = core.getInput('filepath')
     console.log('filepath', filepath)
+    console.log('errorResponse %s (%s)', errorResponse, typeof errorResponse)
 
     core.debug((new Date()).toTimeString())
     await validate(filepath)
     core.debug((new Date()).toTimeString())
   }
   catch (error) {
+    if(errorResponse == "true") {
+      console.log("Identified Errors: ")
+      console.log(JSON.stringify(error.validationErrors, null, 2))
+    }
     core.setFailed(error.message)
   }
 }
